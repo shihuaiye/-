@@ -16,8 +16,7 @@
 
 ## 快速启动
 
-```bash
-cd pc-secondhand
+```bash(在所属文件夹中打开终端）
 pnpm install
 pnpm dev
 ```
