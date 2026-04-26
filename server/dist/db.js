@@ -1,8 +1,10 @@
 import fs from "fs/promises";
 import path from "path";
 const dataDir = path.join(process.cwd(), "src", "data");
+export const DATA_DIR = dataDir;
 const usersFile = path.join(dataDir, "users.json");
 const productsFile = path.join(dataDir, "products.json");
+const messagesFile = path.join(dataDir, "messages.json");
 const ensureInit = async () => {
     const users = await readUsers();
     const products = await readProducts();
@@ -14,6 +16,7 @@ const ensureInit = async () => {
             username: "admin",
             password: "admin123",
             role: "admin",
+            status: "active",
             createdAt: now,
         });
         users.push({
@@ -21,6 +24,7 @@ const ensureInit = async () => {
             username: "user01",
             password: "user123",
             role: "user",
+            status: "active",
             createdAt: now,
         });
         changed = true;
@@ -87,6 +91,19 @@ const ensureInit = async () => {
     if (changed) {
         await writeUsers(users);
     }
+    const messages = await readMessages();
+    if (messages.length === 0) {
+        await writeMessages([
+            {
+                id: "m-sample-1",
+                productId: "p-sample-1",
+                fromUserId: "u-admin",
+                fromUsername: "admin",
+                content: "这台还在吗？可以小刀吗？",
+                createdAt: new Date().toISOString(),
+            },
+        ]);
+    }
 };
 export const initDb = ensureInit;
 export const readUsers = async () => {
@@ -102,5 +119,17 @@ export const readProducts = async () => {
 };
 export const writeProducts = async (products) => {
     await fs.writeFile(productsFile, JSON.stringify(products, null, 2));
+};
+export const readMessages = async () => {
+    try {
+        const raw = await fs.readFile(messagesFile, "utf-8");
+        return JSON.parse(raw);
+    }
+    catch {
+        return [];
+    }
+};
+export const writeMessages = async (messages) => {
+    await fs.writeFile(messagesFile, JSON.stringify(messages, null, 2));
 };
 export const newId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

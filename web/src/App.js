@@ -1,137 +1,174 @@
-import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useMemo, useState } from "react";
-const API = "http://localhost:3100/api";
-const PAGE_SIZE = 6;
-const passwordStrength = (pwd) => {
-    let score = 0;
-    if (pwd.length >= 8)
-        score++;
-    if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd))
-        score++;
-    if (/\d/.test(pwd))
-        score++;
-    if (/[^A-Za-z0-9]/.test(pwd))
-        score++;
-    if (score <= 1)
-        return { label: "弱", color: "#dc2626", pass: false };
-    if (score <= 2)
-        return { label: "中", color: "#f59e0b", pass: true };
-    return { label: "强", color: "#16a34a", pass: true };
-};
+import { AppSidebar } from "./components/AppSidebar";
+import { AuthView } from "./components/AuthView";
+import { AccountDetailModal, ChatModal, ProductDetailModal } from "./components/modals";
+import { AccountsTab, CartTab, FavoritesTab, ManageTab, MarketTab, MessagesTab, MineTab } from "./components/tabs";
+import { PRESET_LOCATIONS } from "./constants/locations";
+import { api } from "./services/api";
+import { PAGE_SIZE, distanceKm, passwordStrength, toBase64 } from "./utils";
 export function App() {
     const [token, setToken] = useState(localStorage.getItem("sh-token") || "");
     const [user, setUser] = useState(null);
     const [allProducts, setAllProducts] = useState([]);
     const [marketProducts, setMarketProducts] = useState([]);
     const [myProducts, setMyProducts] = useState([]);
+    const [allUsers, setAllUsers] = useState([]);
     const [activeTab, setActiveTab] = useState("market");
+    const [adminProductTab, setAdminProductTab] = useState("all");
     const [detail, setDetail] = useState(null);
+    const [messages, setMessages] = useState([]);
+    const [messageInput, setMessageInput] = useState("");
+    const [messageImageFile, setMessageImageFile] = useState(null);
     const [showRegister, setShowRegister] = useState(false);
-    const [favorites, setFavorites] = useState(JSON.parse(localStorage.getItem("sh-favorites") || "[]"));
+    const [favorites, setFavorites] = useState([]);
+    const [cart, setCart] = useState([]);
     const [keyword, setKeyword] = useState("");
     const [categoryFilter, setCategoryFilter] = useState("all");
+    const [sortBy, setSortBy] = useState("default");
     const [page, setPage] = useState(1);
+    const [conversations, setConversations] = useState([]);
+    const [chatTarget, setChatTarget] = useState(null);
+    const [chatMessages, setChatMessages] = useState([]);
+    const [chatInput, setChatInput] = useState("");
+    const [chatImageFile, setChatImageFile] = useState(null);
+    const [relatedProduct, setRelatedProduct] = useState(null);
+    const [lastSeenMessageTime, setLastSeenMessageTime] = useState("");
+    const [orders, setOrders] = useState([]);
+    const [myPurchases, setMyPurchases] = useState([]);
+    const [mySales, setMySales] = useState([]);
+    const [historyTab, setHistoryTab] = useState("sales");
+    const [recommendations, setRecommendations] = useState([]);
+    const [userLocation, setUserLocation] = useState(null);
+    const [accountDetail, setAccountDetail] = useState(null);
+    const [accountForm, setAccountForm] = useState({
+        username: "",
+        password: "",
+        role: "user",
+        status: "active",
+        reviewNote: "",
+    });
     const [loginForm, setLoginForm] = useState({ username: "", password: "" });
     const [regForm, setRegForm] = useState({
         username: "",
         password: "",
         role: "user",
-        adminCode: "",
     });
     const [publishForm, setPublishForm] = useState({
         title: "",
         description: "",
         price: 0,
         category: "daily",
-        imagesText: "",
+        images: [],
         campus: "",
         brand: "",
         model: "",
         memory: "",
+        latitude: undefined,
+        longitude: undefined,
     });
-    const authHeaders = () => (token ? { Authorization: `Bearer ${token}` } : {});
+    const [manualLocationLabel, setManualLocationLabel] = useState("");
+    const authHeaders = () => token ? { Authorization: `Bearer ${token}` } : {};
+    const favoritesKey = user ? `sh-favorites-${user.id}` : "sh-favorites-guest";
+    const cartKey = user ? `sh-cart-${user.id}` : "sh-cart-guest";
+    const messageSeenKey = user ? `sh-msg-seen-${user.id}` : "sh-msg-seen-guest";
     const fetchMe = async () => {
         if (!token)
             return;
-        const res = await fetch(`${API}/auth/me`, { headers: authHeaders() });
-        const json = await res.json();
+        const json = await api.auth.me(authHeaders());
         if (!json.success)
             return;
         setUser(json.data);
     };
     const login = async () => {
-        const res = await fetch(`${API}/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(loginForm),
-        });
-        const json = await res.json();
+        const json = await api.auth.login(loginForm);
         if (!json.success)
             return alert(json.message);
         setToken(json.data.token);
         setUser(json.data.user);
         localStorage.setItem("sh-token", json.data.token);
+        localStorage.setItem("sh-username", loginForm.username);
+        localStorage.setItem("sh-password", loginForm.password);
     };
     const register = async () => {
         const strength = passwordStrength(regForm.password);
         if (!strength.pass)
             return alert("密码强度过弱，请至少满足8位并包含数字/字母组合");
-        const res = await fetch(`${API}/auth/register`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(regForm),
-        });
-        const json = await res.json();
+        const json = await api.auth.register(regForm);
         if (!json.success)
             return alert(json.message);
-        alert("注册成功，请使用新账号登录");
+        alert(json.message || "注册成功，请登录");
         setShowRegister(false);
-        setRegForm({ username: "", password: "", role: "user", adminCode: "" });
+        setRegForm({ username: "", password: "", role: "user" });
     };
     const loadAllForAdmin = async () => {
-        const res = await fetch(`${API}/products?mode=all`, { headers: authHeaders() });
-        const json = await res.json();
+        const json = await api.products.all(authHeaders());
         if (json.success)
             setAllProducts(json.data);
     };
     const loadMarket = async () => {
-        const res = await fetch(`${API}/products`, { headers: authHeaders() });
-        const json = await res.json();
+        const json = await api.products.market(authHeaders());
         if (json.success)
             setMarketProducts(json.data);
     };
     const loadMine = async () => {
-        const res = await fetch(`${API}/products?mode=mine`, { headers: authHeaders() });
-        const json = await res.json();
+        const json = await api.products.mine(authHeaders());
         if (json.success)
             setMyProducts(json.data);
     };
+    const loadUsers = async () => {
+        if (user?.role !== "admin")
+            return;
+        const json = await api.admin.users(authHeaders());
+        if (json.success)
+            setAllUsers(json.data);
+    };
     const loadDetail = async (id) => {
-        const res = await fetch(`${API}/products/${id}`, { headers: authHeaders() });
-        const json = await res.json();
+        const json = await api.products.detail(id, authHeaders());
         if (!json.success)
             return alert(json.message);
         setDetail(json.data);
+        const msgJson = await api.messages.byProduct(id, authHeaders());
+        if (msgJson.success)
+            setMessages(msgJson.data);
+    };
+    const sendMessage = async () => {
+        if (!detail)
+            return;
+        const content = messageInput.trim();
+        const imageData = messageImageFile ? await toBase64(messageImageFile) : "";
+        if (!content && !imageData)
+            return;
+        const finalContent = imageData
+            ? content
+                ? `${content}\n[图片: ${imageData}]`
+                : `[图片: ${imageData}]`
+            : content;
+        const json = await api.messages.sendToProduct(detail.id, finalContent, authHeaders());
+        if (!json.success)
+            return alert(json.message);
+        setMessageInput("");
+        setMessageImageFile(null);
+        await loadDetail(detail.id);
     };
     const publish = async () => {
-        const images = publishForm.imagesText.split("\n").map((s) => s.trim()).filter(Boolean);
+        if (!publishForm.images.length) {
+            return alert("请至少选择一张商品图片");
+        }
         const payload = {
             title: publishForm.title,
             description: publishForm.description,
             price: Number(publishForm.price),
             category: publishForm.category,
-            images,
+            images: publishForm.images,
             campus: publishForm.campus,
             brand: publishForm.brand || undefined,
             model: publishForm.model || undefined,
             memory: publishForm.memory || undefined,
+            latitude: publishForm.latitude,
+            longitude: publishForm.longitude,
         };
-        const res = await fetch(`${API}/products`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...authHeaders() },
-            body: JSON.stringify(payload),
-        });
-        const json = await res.json();
+        const json = await api.products.create(payload, authHeaders());
         if (!json.success)
             return alert(json.message);
         alert("发布成功，等待审核");
@@ -140,73 +177,316 @@ export function App() {
             description: "",
             price: 0,
             category: "daily",
-            imagesText: "",
+            images: [],
             campus: "",
             brand: "",
             model: "",
             memory: "",
+            latitude: undefined,
+            longitude: undefined,
         });
         await Promise.all([loadMine(), loadMarket(), loadAllForAdmin()]);
     };
     const audit = async (id, action) => {
         const reason = action === "reject" ? prompt("请输入拒绝理由") || "" : "";
-        const res = await fetch(`${API}/products/${id}/audit`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...authHeaders() },
-            body: JSON.stringify({ action, reason }),
-        });
-        const json = await res.json();
+        const json = await api.products.audit(id, action, reason, authHeaders());
         if (!json.success)
             return alert(json.message);
         await Promise.all([loadAllForAdmin(), loadMarket()]);
     };
     const toggleStatus = async (id, status) => {
-        const res = await fetch(`${API}/products/${id}/status`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...authHeaders() },
-            body: JSON.stringify({ status }),
-        });
-        const json = await res.json();
+        const json = await api.products.status(id, status, authHeaders());
         if (!json.success)
             return alert(json.message);
         await Promise.all([loadAllForAdmin(), loadMarket()]);
     };
+    const reviewAdminUser = async (id, action) => {
+        const note = prompt(action === "approve" ? "审核备注（可选）" : "拒绝理由（建议填写）") || "";
+        const json = await api.admin.reviewUser(id, action, note, authHeaders());
+        if (!json.success)
+            return alert(json.message);
+        await loadUsers();
+    };
+    const deleteUser = async (id, username) => {
+        if (!confirm(`确认删除账号 ${username}？该操作不可撤销。`))
+            return;
+        const json = await api.admin.deleteUser(id, authHeaders());
+        if (!json.success)
+            return alert(json.message);
+        await loadUsers();
+    };
+    const loadAccountDetail = async (id) => {
+        const json = await api.admin.userDetail(id, authHeaders());
+        if (!json.success)
+            return alert(json.message);
+        setAccountDetail(json.data);
+        setAccountForm({
+            username: json.data.username || "",
+            password: json.data.password || "",
+            role: json.data.role || "user",
+            status: json.data.status || "active",
+            reviewNote: json.data.reviewNote || "",
+        });
+    };
+    const saveAccountDetail = async () => {
+        if (!accountDetail)
+            return;
+        const json = await api.admin.saveUser(accountDetail.id, accountForm, authHeaders());
+        if (!json.success)
+            return alert(json.message);
+        alert("账号信息已更新");
+        await loadUsers();
+        setAccountDetail(json.data);
+    };
+    const markMessagesAsSeen = () => {
+        const now = new Date().toISOString();
+        setLastSeenMessageTime(now);
+        localStorage.setItem(messageSeenKey, now);
+    };
+    const pickCurrentLocation = () => {
+        if (!navigator.geolocation)
+            return alert("当前浏览器不支持定位");
+        navigator.geolocation.getCurrentPosition((position) => {
+            const latitude = position.coords.latitude;
+            const longitude = position.coords.longitude;
+            setUserLocation({ latitude, longitude });
+            setPublishForm((prev) => ({ ...prev, latitude, longitude }));
+        }, () => alert("定位失败，请检查定位权限"));
+    };
+    const onPublishImagesSelected = async (files) => {
+        if (!files || files.length === 0)
+            return;
+        const imageFiles = Array.from(files).slice(0, 6);
+        const images = await Promise.all(imageFiles.map((f) => toBase64(f)));
+        setPublishForm((prev) => ({ ...prev, images }));
+    };
     const toggleFavorite = (id) => {
-        const next = favorites.includes(id) ? favorites.filter((x) => x !== id) : [...favorites, id];
+        const next = favorites.includes(id)
+            ? favorites.filter((x) => x !== id)
+            : [...favorites, id];
         setFavorites(next);
-        localStorage.setItem("sh-favorites", JSON.stringify(next));
+        localStorage.setItem(favoritesKey, JSON.stringify(next));
+    };
+    const toggleCart = (id) => {
+        const next = cart.includes(id) ? cart.filter((x) => x !== id) : [...cart, id];
+        setCart(next);
+        localStorage.setItem(cartKey, JSON.stringify(next));
+    };
+    const applyManualLocation = () => {
+        const location = PRESET_LOCATIONS.find((loc) => loc.label === manualLocationLabel);
+        if (!location)
+            return;
+        setPublishForm((prev) => ({
+            ...prev,
+            campus: location.campus,
+            latitude: location.latitude,
+            longitude: location.longitude,
+        }));
+        setUserLocation({ latitude: location.latitude, longitude: location.longitude });
+    };
+    const loadConversations = async () => {
+        if (!token || !user)
+            return;
+        const json = await api.conversations.list(authHeaders());
+        if (json.success)
+            setConversations(json.data);
+    };
+    const openChat = async (target) => {
+        setChatTarget(target);
+        markMessagesAsSeen();
+        const json = await api.conversations.detail(target.userId, authHeaders());
+        if (json.success)
+            setChatMessages(json.data);
+    };
+    const loadChatMessages = async (targetUserId) => {
+        const json = await api.conversations.detail(targetUserId, authHeaders());
+        if (json.success)
+            setChatMessages(json.data);
+    };
+    const sendChatMessage = async () => {
+        if (!chatTarget)
+            return;
+        const content = chatInput.trim();
+        const imageData = chatImageFile ? await toBase64(chatImageFile) : "";
+        if (!content && !imageData) {
+            alert("请输入消息内容或选择图片");
+            return;
+        }
+        let finalContent = content;
+        if (imageData) {
+            if (content) {
+                finalContent = `${content}\n[图片: ${imageData}]`;
+            }
+            else {
+                finalContent = `[图片: ${imageData}]`;
+            }
+        }
+        const json = await api.conversations.send(chatTarget.userId, finalContent, authHeaders());
+        if (!json.success)
+            return alert(json.message);
+        setChatInput("");
+        setChatImageFile(null);
+        await openChat(chatTarget);
+    };
+    useEffect(() => {
+        try {
+            if (chatMessages.length > 0) {
+                setTimeout(() => {
+                    const container = document.getElementById("chat-messages-container");
+                    if (container) {
+                        container.scrollTop = container.scrollHeight;
+                    }
+                }, 100);
+            }
+        }
+        catch (error) {
+            console.error("Auto scroll error:", error);
+        }
+    }, [chatMessages]);
+    useEffect(() => {
+        if (!token || !user)
+            return;
+        const timer = window.setInterval(() => {
+            loadConversations().catch(console.error);
+            loadOrders().catch(console.error);
+            loadRecommendations().catch(console.error);
+            if (detail) {
+                loadDetail(detail.id).catch(console.error);
+            }
+            if (chatTarget) {
+                loadChatMessages(chatTarget.userId).catch(console.error);
+            }
+        }, 5000);
+        return () => window.clearInterval(timer);
+    }, [token, user, detail?.id, chatTarget?.userId]);
+    const contactSeller = async () => {
+        if (!detail || !user)
+            return;
+        if (detail.sellerId === user.id) {
+            alert("这是您自己发布的商品，无需联系卖家");
+            return;
+        }
+        setRelatedProduct(detail);
+        const targetConv = {
+            userId: detail.sellerId,
+            username: detail.sellerName,
+            lastMessage: "",
+            lastTime: new Date().toISOString(),
+            unreadCount: 0,
+            productId: detail.id,
+        };
+        await openChat(targetConv);
+    };
+    const markAsSold = async (product) => {
+        if (!confirm(`确认将"${product.title}"标记为已售出？`))
+            return;
+        const buyerName = prompt("请输入买家昵称（可留空，默认系统模拟成交）")?.trim() || "系统模拟";
+        const json = await api.products.soldBySeller(product.id, buyerName, authHeaders());
+        if (!json.success)
+            return alert(json.message);
+        alert("商品已标记为售出");
+        await Promise.all([loadMine(), loadMarket(), loadAllForAdmin(), loadOrders()]);
+    };
+    const buyFromCart = async (product) => {
+        if (!user)
+            return;
+        if (product.sellerId === user.id) {
+            alert("不能购买自己发布的商品");
+            return;
+        }
+        if (!confirm(`确认购买 "${product.title}" 吗？`))
+            return;
+        const json = await api.products.purchase(product.id, authHeaders());
+        if (!json.success)
+            return alert(json.message);
+        alert("下单成功，交易已完成");
+        toggleCart(product.id);
+        await Promise.all([loadMarket(), loadMine(), loadOrders(), loadAllForAdmin()]);
+    };
+    const loadOrders = async () => {
+        if (!token || !user)
+            return;
+        const json = await api.orders.list(authHeaders());
+        if (json.success) {
+            setOrders(json.data);
+            setMyPurchases(json.data.filter((o) => o.buyerId === user.id));
+            setMySales(json.data.filter((o) => o.sellerId === user.id));
+        }
+    };
+    const loadRecommendations = async () => {
+        if (!token || !user)
+            return;
+        const json = await api.recommendations.list(authHeaders());
+        if (json.success)
+            setRecommendations(json.data);
     };
     const logout = () => {
         localStorage.removeItem("sh-token");
+        localStorage.removeItem("sh-username");
+        localStorage.removeItem("sh-password");
         setToken("");
         setUser(null);
         setDetail(null);
+        setCart([]);
     };
     const filteredMarket = useMemo(() => {
-        const byKeyword = marketProducts.filter((p) => `${p.title}${p.description}${p.campus}`.toLowerCase().includes(keyword.toLowerCase()));
-        if (categoryFilter === "all")
-            return byKeyword;
-        return byKeyword.filter((p) => p.category === categoryFilter);
-    }, [marketProducts, keyword, categoryFilter]);
+        const byKeyword = marketProducts.filter((p) => `${p.title}${p.description}${p.campus}`
+            .toLowerCase()
+            .includes(keyword.toLowerCase()));
+        let result = categoryFilter === "all" ? byKeyword : byKeyword.filter((p) => p.category === categoryFilter);
+        if (sortBy === "price-asc") {
+            result = [...result].sort((a, b) => a.price - b.price);
+        }
+        else if (sortBy === "price-desc") {
+            result = [...result].sort((a, b) => b.price - a.price);
+        }
+        else if (sortBy === "time") {
+            result = [...result].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        }
+        if (userLocation) {
+            result = [...result].sort((a, b) => distanceKm(userLocation, a) - distanceKm(userLocation, b));
+        }
+        return result;
+    }, [marketProducts, keyword, categoryFilter, sortBy, userLocation]);
     const pagedMarket = useMemo(() => {
         const start = (page - 1) * PAGE_SIZE;
         return filteredMarket.slice(start, start + PAGE_SIZE);
     }, [filteredMarket, page]);
     const pageCount = Math.max(1, Math.ceil(filteredMarket.length / PAGE_SIZE));
+    const favoriteProducts = marketProducts.filter((p) => favorites.includes(p.id));
+    const cartProducts = marketProducts.filter((p) => cart.includes(p.id));
+    const adminFilteredProducts = adminProductTab === "all"
+        ? allProducts
+        : allProducts.filter((p) => p.status === adminProductTab);
     const adminStats = useMemo(() => {
         const count = (status) => allProducts.filter((p) => p.status === status).length;
-        return { pending: count("pending"), approved: count("approved"), rejected: count("rejected"), offline: count("offline") };
+        return {
+            pending: count("pending"),
+            approved: count("approved"),
+            rejected: count("rejected"),
+            offline: count("offline"),
+            sold: count("sold"),
+        };
     }, [allProducts]);
+    const hasUnreadMessages = useMemo(() => {
+        if (!conversations.length)
+            return false;
+        return conversations.some((conv) => conv.lastTime > lastSeenMessageTime);
+    }, [conversations, lastSeenMessageTime]);
     useEffect(() => {
         fetchMe();
     }, [token]);
     useEffect(() => {
         if (!token || !user)
             return;
-        loadMarket();
-        loadMine();
+        loadMarket().catch(console.error);
+        loadMine().catch(console.error);
+        loadConversations().catch(console.error);
+        loadOrders().catch(console.error);
+        loadRecommendations().catch(console.error);
         if (user.role === "admin") {
-            loadAllForAdmin();
+            loadAllForAdmin().catch(console.error);
+            loadUsers().catch(console.error);
             setActiveTab("manage");
         }
         else {
@@ -214,11 +494,44 @@ export function App() {
         }
     }, [token, user?.role]);
     useEffect(() => {
+        if (!token || !user || userLocation || !navigator.geolocation)
+            return;
+        navigator.geolocation.getCurrentPosition((position) => {
+            setUserLocation({
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+            });
+        }, () => { });
+    }, [token, user?.id, userLocation]);
+    useEffect(() => {
+        if (!user)
+            return;
+        setFavorites(JSON.parse(localStorage.getItem(favoritesKey) || "[]"));
+        setCart(JSON.parse(localStorage.getItem(cartKey) || "[]"));
+        setLastSeenMessageTime(localStorage.getItem(messageSeenKey) || "");
+    }, [user?.id]);
+    useEffect(() => {
+        if (activeTab === "messages" && conversations.length > 0) {
+            markMessagesAsSeen();
+        }
+    }, [activeTab, conversations.length]);
+    useEffect(() => {
         setPage(1);
-    }, [keyword, categoryFilter]);
+    }, [keyword, categoryFilter, sortBy]);
+    useEffect(() => {
+        const savedUsername = localStorage.getItem("sh-username");
+        const savedPassword = localStorage.getItem("sh-password");
+        if (savedUsername) {
+            setLoginForm({ username: savedUsername, password: savedPassword || "" });
+        }
+    }, []);
     if (!token || !user) {
         const strength = passwordStrength(regForm.password);
-        return (_jsxs("div", { className: "layout-auth", children: [_jsxs("div", { className: "auth-card", children: [_jsx("h1", { children: "\u6821\u56ED\u4E8C\u624B\u4EA4\u6613\u5E73\u53F0" }), _jsx("p", { children: "\u6F14\u793A\u8D26\u53F7\uFF1Aadmin / admin123\uFF0C\u666E\u901A\u7528\u6237\uFF1Auser01 / user123" }), _jsx("input", { placeholder: "\u7528\u6237\u540D", value: loginForm.username, onChange: (e) => setLoginForm({ ...loginForm, username: e.target.value }) }), _jsx("input", { type: "password", placeholder: "\u5BC6\u7801", value: loginForm.password, onChange: (e) => setLoginForm({ ...loginForm, password: e.target.value }) }), _jsxs("div", { className: "row", children: [_jsx("button", { onClick: login, children: "\u767B\u5F55" }), _jsx("button", { className: "ghost", onClick: () => setShowRegister(true), children: "\u53BB\u6CE8\u518C" })] })] }), showRegister && (_jsx("div", { className: "modal-mask", onClick: () => setShowRegister(false), children: _jsxs("div", { className: "modal-card", onClick: (e) => e.stopPropagation(), children: [_jsx("h3", { children: "\u6CE8\u518C\u8D26\u53F7" }), _jsx("input", { placeholder: "\u7528\u6237\u540D", value: regForm.username, onChange: (e) => setRegForm({ ...regForm, username: e.target.value }) }), _jsx("input", { type: "password", placeholder: "\u5BC6\u7801", value: regForm.password, onChange: (e) => setRegForm({ ...regForm, password: e.target.value }) }), _jsxs("p", { style: { color: strength.color, margin: "0 0 10px" }, children: ["\u5BC6\u7801\u5F3A\u5EA6\uFF1A", strength.label] }), _jsxs("select", { value: regForm.role, onChange: (e) => setRegForm({ ...regForm, role: e.target.value }), children: [_jsx("option", { value: "user", children: "\u666E\u901A\u7528\u6237" }), _jsx("option", { value: "admin", children: "\u7BA1\u7406\u5458" })] }), regForm.role === "admin" && (_jsx("input", { placeholder: "\u7BA1\u7406\u5458\u6743\u9650\u7801", value: regForm.adminCode, onChange: (e) => setRegForm({ ...regForm, adminCode: e.target.value }) })), _jsxs("div", { className: "row", children: [_jsx("button", { onClick: register, children: "\u786E\u8BA4\u6CE8\u518C" }), _jsx("button", { className: "ghost", onClick: () => setShowRegister(false), children: "\u53D6\u6D88" })] })] }) }))] }));
+        return (_jsx(AuthView, { loginForm: loginForm, regForm: regForm, showRegister: showRegister, strength: strength, setLoginForm: setLoginForm, setRegForm: setRegForm, setShowRegister: setShowRegister, onLogin: login, onRegister: register }));
     }
-    return (_jsxs("div", { className: "layout", children: [_jsxs("aside", { className: "sider", children: [_jsx("h2", { children: "Campus Market" }), _jsx("button", { className: activeTab === "market" ? "menu active" : "menu", onClick: () => setActiveTab("market"), children: "\u5546\u54C1\u5C55\u793A" }), _jsx("button", { className: activeTab === "mine" ? "menu active" : "menu", onClick: () => setActiveTab("mine"), children: "\u53D1\u5E03/\u6211\u7684\u5546\u54C1" }), user.role === "admin" && _jsx("button", { className: activeTab === "manage" ? "menu active" : "menu", onClick: () => setActiveTab("manage"), children: "\u5BA1\u6838\u7BA1\u7406" })] }), _jsxs("main", { className: "main", children: [_jsxs("header", { className: "topbar", children: [_jsxs("div", { children: ["\u5F53\u524D\u7528\u6237\uFF1A", user.username, "\uFF08", user.role === "admin" ? "管理员" : "普通用户", "\uFF09"] }), _jsx("button", { onClick: logout, children: "\u9000\u51FA\u767B\u5F55" })] }), activeTab === "market" && (_jsxs(_Fragment, { children: [_jsx("section", { className: "card", children: _jsxs("div", { className: "row wrap", children: [_jsx("h3", { children: "\u5546\u54C1\u5E7F\u573A" }), _jsx("input", { className: "search", placeholder: "\u641C\u7D22\u5546\u54C1", value: keyword, onChange: (e) => setKeyword(e.target.value) }), _jsxs("select", { className: "category", value: categoryFilter, onChange: (e) => setCategoryFilter(e.target.value), children: [_jsx("option", { value: "all", children: "\u5168\u90E8\u5206\u7C7B" }), _jsx("option", { value: "digital", children: "\u6570\u7801" }), _jsx("option", { value: "book", children: "\u4E66\u7C4D" }), _jsx("option", { value: "daily", children: "\u65E5\u7528" }), _jsx("option", { value: "ticket", children: "\u7968\u5238" }), _jsx("option", { value: "other", children: "\u5176\u4ED6" })] })] }) }), _jsx("section", { className: "grid", children: pagedMarket.map((p) => (_jsxs("article", { className: "product-card", children: [_jsx("img", { src: p.images?.[0], alt: p.title, className: "thumb" }), _jsxs("div", { className: "row", children: [_jsx("h4", { children: p.title }), _jsx("button", { className: favorites.includes(p.id) ? "small fav active" : "small fav", onClick: () => toggleFavorite(p.id), children: favorites.includes(p.id) ? "已收藏" : "收藏" })] }), _jsxs("p", { className: "muted", children: [p.description.slice(0, 52), "..."] }), _jsxs("div", { className: "row", children: [_jsxs("strong", { children: ["\u00A5", p.price] }), _jsx("span", { children: p.campus })] }), _jsxs("div", { className: "meta", children: ["\u53D1\u5E03\u65F6\u95F4\uFF1A", new Date(p.createdAt).toLocaleDateString("zh-CN")] }), _jsxs("div", { className: "seller-block", children: ["\u5356\u5BB6\uFF1A", p.sellerName] }), _jsx("button", { className: "small", onClick: () => loadDetail(p.id), children: "\u67E5\u770B\u8BE6\u60C5" })] }, p.id))) }), _jsxs("section", { className: "card pagination", children: [_jsx("button", { className: "ghost", disabled: page <= 1, onClick: () => setPage((x) => Math.max(1, x - 1)), children: "\u4E0A\u4E00\u9875" }), _jsxs("span", { children: ["\u7B2C ", page, " / ", pageCount, " \u9875"] }), _jsx("button", { className: "ghost", disabled: page >= pageCount, onClick: () => setPage((x) => Math.min(pageCount, x + 1)), children: "\u4E0B\u4E00\u9875" })] })] })), activeTab === "mine" && (_jsxs(_Fragment, { children: [_jsxs("section", { className: "card", children: [_jsx("h3", { children: "\u53D1\u5E03\u5546\u54C1" }), _jsx("input", { placeholder: "\u6807\u9898", value: publishForm.title, onChange: (e) => setPublishForm({ ...publishForm, title: e.target.value }) }), _jsx("textarea", { placeholder: "\u4ECB\u7ECD", value: publishForm.description, onChange: (e) => setPublishForm({ ...publishForm, description: e.target.value }) }), _jsxs("div", { className: "row", children: [_jsx("input", { type: "number", placeholder: "\u4EF7\u683C", value: publishForm.price, onChange: (e) => setPublishForm({ ...publishForm, price: Number(e.target.value) }) }), _jsx("input", { placeholder: "\u4EA4\u6613\u5730\u70B9/\u6821\u533A", value: publishForm.campus, onChange: (e) => setPublishForm({ ...publishForm, campus: e.target.value }) })] }), _jsxs("select", { value: publishForm.category, onChange: (e) => setPublishForm({ ...publishForm, category: e.target.value }), children: [_jsx("option", { value: "daily", children: "\u65E5\u7528" }), _jsx("option", { value: "digital", children: "\u6570\u7801" }), _jsx("option", { value: "book", children: "\u4E66\u7C4D" }), _jsx("option", { value: "ticket", children: "\u7968\u5238" }), _jsx("option", { value: "other", children: "\u5176\u4ED6" })] }), _jsx("textarea", { placeholder: "\u5546\u54C1\u56FE\u7247URL\uFF08\u53EF\u591A\u5F20\uFF0C\u6BCF\u884C\u4E00\u5F20\uFF09", value: publishForm.imagesText, onChange: (e) => setPublishForm({ ...publishForm, imagesText: e.target.value }) }), publishForm.category === "digital" && (_jsxs("div", { className: "row", children: [_jsx("input", { placeholder: "\u54C1\u724C\uFF08\u5FC5\u586B\uFF09", value: publishForm.brand, onChange: (e) => setPublishForm({ ...publishForm, brand: e.target.value }) }), _jsx("input", { placeholder: "\u578B\u53F7\uFF08\u5FC5\u586B\uFF09", value: publishForm.model, onChange: (e) => setPublishForm({ ...publishForm, model: e.target.value }) }), _jsx("input", { placeholder: "\u5185\u5B58\u5BB9\u91CF\uFF08\u5FC5\u586B\uFF09", value: publishForm.memory, onChange: (e) => setPublishForm({ ...publishForm, memory: e.target.value }) })] })), _jsx("button", { onClick: publish, children: "\u63D0\u4EA4\u5BA1\u6838" })] }), _jsxs("section", { className: "card", children: [_jsx("h3", { children: "\u6211\u7684\u5546\u54C1" }), _jsxs("table", { children: [_jsx("thead", { children: _jsxs("tr", { children: [_jsx("th", { children: "\u6807\u9898" }), _jsx("th", { children: "\u4EF7\u683C" }), _jsx("th", { children: "\u72B6\u6001" }), _jsx("th", { children: "\u62D2\u7EDD\u539F\u56E0" })] }) }), _jsx("tbody", { children: myProducts.map((p) => (_jsxs("tr", { children: [_jsx("td", { children: p.title }), _jsxs("td", { children: ["\u00A5", p.price] }), _jsx("td", { children: p.status }), _jsx("td", { children: p.rejectionReason || "-" })] }, p.id))) })] })] })] })), activeTab === "manage" && user.role === "admin" && (_jsxs(_Fragment, { children: [_jsxs("section", { className: "stats", children: [_jsxs("div", { className: "stat", children: ["\u5F85\u5BA1\u6838 ", _jsx("b", { children: adminStats.pending })] }), _jsxs("div", { className: "stat", children: ["\u5DF2\u901A\u8FC7 ", _jsx("b", { children: adminStats.approved })] }), _jsxs("div", { className: "stat", children: ["\u5DF2\u62D2\u7EDD ", _jsx("b", { children: adminStats.rejected })] }), _jsxs("div", { className: "stat", children: ["\u5DF2\u4E0B\u7EBF ", _jsx("b", { children: adminStats.offline })] })] }), _jsxs("section", { className: "card", children: [_jsx("h3", { children: "\u5BA1\u6838\u7BA1\u7406" }), _jsxs("table", { children: [_jsx("thead", { children: _jsxs("tr", { children: [_jsx("th", { children: "\u6807\u9898" }), _jsx("th", { children: "\u5206\u7C7B" }), _jsx("th", { children: "\u4EF7\u683C" }), _jsx("th", { children: "\u72B6\u6001" }), _jsx("th", { children: "\u62D2\u7EDD\u539F\u56E0" }), _jsx("th", { children: "\u64CD\u4F5C" })] }) }), _jsx("tbody", { children: allProducts.map((p) => (_jsxs("tr", { children: [_jsx("td", { children: p.title }), _jsx("td", { children: p.category }), _jsxs("td", { children: ["\u00A5", p.price] }), _jsx("td", { children: p.status }), _jsx("td", { children: p.rejectionReason || "-" }), _jsxs("td", { children: [p.status === "pending" && (_jsxs(_Fragment, { children: [_jsx("button", { className: "small", onClick: () => audit(p.id, "approve"), children: "\u901A\u8FC7" }), _jsx("button", { className: "small danger", onClick: () => audit(p.id, "reject"), children: "\u62D2\u7EDD" })] })), p.status === "approved" && _jsx("button", { className: "small danger", onClick: () => toggleStatus(p.id, "offline"), children: "\u4E0B\u7EBF" }), p.status === "offline" && _jsx("button", { className: "small", onClick: () => toggleStatus(p.id, "approved"), children: "\u6062\u590D" })] })] }, p.id))) })] })] })] })), detail && (_jsx("div", { className: "modal-mask", onClick: () => setDetail(null), children: _jsxs("div", { className: "detail-modal", onClick: (e) => e.stopPropagation(), children: [_jsx("h3", { children: detail.title }), _jsx("div", { className: "detail-images", children: detail.images.map((img, i) => _jsx("img", { src: img, alt: `图片${i + 1}` }, i)) }), _jsx("p", { children: detail.description }), _jsxs("p", { children: [_jsx("b", { children: "\u4EF7\u683C\uFF1A" }), "\u00A5", detail.price] }), _jsxs("p", { children: [_jsx("b", { children: "\u5730\u70B9\uFF1A" }), detail.campus] }), _jsxs("p", { children: [_jsx("b", { children: "\u5356\u5BB6\uFF1A" }), detail.sellerName] }), _jsxs("p", { children: [_jsx("b", { children: "\u53D1\u5E03\u65F6\u95F4\uFF1A" }), new Date(detail.createdAt).toLocaleString("zh-CN")] }), detail.category === "digital" && (_jsxs("p", { children: [_jsx("b", { children: "\u89C4\u683C\uFF1A" }), detail.brand, " / ", detail.model, " / ", detail.memory] })), _jsxs("div", { className: "row", children: [_jsx("button", { className: favorites.includes(detail.id) ? "small fav active" : "small fav", onClick: () => toggleFavorite(detail.id), children: favorites.includes(detail.id) ? "取消收藏" : "收藏商品" }), _jsx("button", { className: "ghost", onClick: () => setDetail(null), children: "\u5173\u95ED" })] })] }) }))] })] }));
+    return (_jsxs("div", { className: "layout", children: [_jsx(AppSidebar, { user: user, activeTab: activeTab, conversationsCount: conversations.length, hasUnreadMessages: hasUnreadMessages, onTabChange: setActiveTab, onOpenMessages: () => {
+                    setActiveTab("messages");
+                    loadConversations();
+                    markMessagesAsSeen();
+                } }), _jsxs("main", { className: "main", children: [_jsxs("header", { className: "topbar", children: [_jsxs("div", { children: ["\u5F53\u524D\u7528\u6237\uFF1A", user.username, "\uFF08", user.role === "admin" ? "管理员" : "普通用户", "\uFF09"] }), _jsx("button", { onClick: logout, children: "\u9000\u51FA\u767B\u5F55" })] }), activeTab === "market" && (_jsx(MarketTab, { keyword: keyword, setKeyword: setKeyword, categoryFilter: categoryFilter, setCategoryFilter: setCategoryFilter, sortBy: sortBy, setSortBy: setSortBy, userLocation: userLocation, pickCurrentLocation: pickCurrentLocation, pagedMarket: pagedMarket, favorites: favorites, toggleFavorite: toggleFavorite, loadDetail: loadDetail, page: page, pageCount: pageCount, setPage: setPage, recommendations: recommendations, cart: cart, toggleCart: toggleCart })), activeTab === "favorites" && (_jsx(FavoritesTab, { favoriteProducts: favoriteProducts, loadDetail: loadDetail, toggleFavorite: toggleFavorite })), activeTab === "cart" && (_jsx(CartTab, { cartProducts: cartProducts, removeFromCart: toggleCart, loadDetail: loadDetail, buyNow: buyFromCart })), activeTab === "mine" && (_jsx(MineTab, { publishForm: publishForm, setPublishForm: setPublishForm, onPublishImagesSelected: onPublishImagesSelected, pickCurrentLocation: pickCurrentLocation, publish: publish, myProducts: myProducts, markAsSold: markAsSold, historyTab: historyTab, setHistoryTab: setHistoryTab, mySales: mySales, myPurchases: myPurchases, presetLocations: PRESET_LOCATIONS, manualLocationLabel: manualLocationLabel, setManualLocationLabel: setManualLocationLabel, applyManualLocation: applyManualLocation })), activeTab === "manage" && user.role === "admin" && (_jsx(ManageTab, { adminStats: adminStats, adminProductTab: adminProductTab, setAdminProductTab: setAdminProductTab, allProducts: allProducts, adminFilteredProducts: adminFilteredProducts, audit: audit, toggleStatus: toggleStatus })), activeTab === "accounts" && user.role === "admin" && (_jsx(AccountsTab, { allUsers: allUsers, user: user, loadAccountDetail: loadAccountDetail, reviewAdminUser: reviewAdminUser, deleteUser: deleteUser })), _jsx(AccountDetailModal, { accountDetail: accountDetail, accountForm: accountForm, setAccountForm: setAccountForm, setAccountDetail: setAccountDetail, saveAccountDetail: saveAccountDetail }), activeTab === "messages" && (_jsx(MessagesTab, { conversations: conversations, lastSeenMessageTime: lastSeenMessageTime, openChat: openChat })), _jsx(ProductDetailModal, { detail: detail, setDetail: setDetail, favorites: favorites, toggleFavorite: toggleFavorite, user: user, contactSeller: contactSeller, messages: messages, setMessageImageFile: setMessageImageFile, messageInput: messageInput, setMessageInput: setMessageInput, sendMessage: sendMessage }), _jsx(ChatModal, { chatTarget: chatTarget, setChatTarget: setChatTarget, relatedProduct: relatedProduct, setRelatedProduct: setRelatedProduct, chatMessages: chatMessages, user: user, chatInput: chatInput, setChatInput: setChatInput, setChatImageFile: setChatImageFile, sendChatMessage: sendChatMessage })] })] }));
 }

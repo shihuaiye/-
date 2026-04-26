@@ -6,5 +6,65 @@
     "fromUsername": "admin",
     "content": "这台还在吗？可以小刀吗？",
     "createdAt": "2026-04-26T04:49:34.810Z"
+  },
+  {
+    "id": "m-1777195976465-0c9ztd",
+    "productId": "",
+    "fromUserId": "u-1777184382178-n8t4mt",
+    "fromUsername": "user2",
+    "toUserId": "u-1777178673278-s0bp3d",
+    "toUsername": "user11",
+    "content": "你好，可以小刀一下吗",
+    "createdAt": "2026-04-26T09:32:56.465Z"
+  },
+  {
+    "id": "m-1777196063339-v75yco",
+    "productId": "",
+    "fromUserId": "u-1777184382178-n8t4mt",
+    "fromUsername": "user2",
+    "toUserId": "u-1777178673278-s0bp3d",
+    "toUsername": "user11",
+    "content": "111",
+    "createdAt": "2026-04-26T09:34:23.339Z"
+  },
+  {
+    "id": "m-1777196278467-y9y7c5",
+    "productId": "",
+    "fromUserId": "u-admin",
+    "fromUsername": "admin",
+    "toUserId": "u-1777184382178-n8t4mt",
+    "toUsername": "user2",
+    "content": "duoshaoqian",
+    "createdAt": "2026-04-26T09:37:58.467Z"
+  },
+  {
+    "id": "m-1777196310440-ninp8q",
+    "productId": "",
+    "fromUserId": "u-1777184382178-n8t4mt",
+    "fromUsername": "user2",
+    "toUserId": "u-admin",
+    "toUsername": "admin",
+    "content": "100\n[图片: https://ts1.tc.mm.bing.net/th/id/OIP-C.dVQ_IxLioQvtAsmSaLYXtwHaFB?rs=1&pid=ImgDetMain&o=7&rm=3]",
+    "createdAt": "2026-04-26T09:38:30.440Z"
+  },
+  {
+    "id": "m-1777197137425-5l6a93",
+    "productId": "",
+    "fromUserId": "u-1777184382178-n8t4mt",
+    "fromUsername": "user2",
+    "toUserId": "u-admin",
+    "toUsername": "admin",
+    "content": "aaa",
+    "createdAt": "2026-04-26T09:52:17.425Z"
+  },
+  {
+    "id": "m-1777197142293-kxm8u6",
+    "productId": "",
+    "fromUserId": "u-1777184382178-n8t4mt",
+    "fromUsername": "user2",
+    "toUserId": "u-1777178673278-s0bp3d",
+    "toUsername": "user11",
+    "content": "aa",
+    "createdAt": "2026-04-26T09:52:22.293Z"
   }
 ]

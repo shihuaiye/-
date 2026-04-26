@@ -1,5 +1,5 @@
 import { Router } from "express";
-import fs from "fs";
+import fs from "fs/promises";
 import path from "path";
 import { adminOnly, auth, AuthedRequest } from "./auth.js";
 import {
@@ -161,6 +161,8 @@ router.post("/products", auth, async (req: AuthedRequest, res) => {
     brand: body.brand,
     model: body.model,
     memory: body.memory,
+    latitude: typeof body.latitude === "number" ? body.latitude : undefined,
+    longitude: typeof body.longitude === "number" ? body.longitude : undefined,
     status: "pending" as const,
     sellerId: req.userId!,
     sellerName: currentUser?.username || "unknown",
@@ -193,11 +195,11 @@ router.post("/products/:id/audit", auth, adminOnly, async (req, res) => {
 });
 
 router.post("/products/:id/status", auth, adminOnly, async (req, res) => {
-  const { status } = req.body as { status: "offline" | "approved" };
+  const { status } = req.body as { status: "offline" | "approved" | "sold" };
   const products = await readProducts();
   const idx = products.findIndex((p) => p.id === req.params.id);
   if (idx === -1) return res.status(404).json({ success: false, message: "商品不存在" });
-  if (status !== "offline" && status !== "approved") {
+  if (status !== "offline" && status !== "approved" && status !== "sold") {
     return res.status(400).json({ success: false, message: "状态不合法" });
   }
   products[idx].status = status;
@@ -253,10 +255,9 @@ router.get("/conversations", auth, async (req: AuthedRequest, res) => {
   );
   const conversationMap = new Map<string, any>();
   userMessages.forEach((msg) => {
-    const otherId =
-      msg.fromUserId === req.userId ? msg.toUserId : msg.fromUserId;
-    const otherName =
-      msg.fromUserId === req.userId ? msg.toUsername : msg.fromUsername;
+    const otherId = msg.fromUserId === req.userId ? msg.toUserId : msg.fromUserId;
+    const otherName = msg.fromUserId === req.userId ? msg.toUsername : msg.fromUsername;
+    if (!otherId || !otherName) return;
     if (!conversationMap.has(otherId)) {
       conversationMap.set(otherId, {
         userId: otherId,
@@ -328,6 +329,54 @@ router.get("/admin/users", auth, adminOnly, async (_req, res) => {
   res.json({ success: true, data: users });
 });
 
+router.get("/admin/users/:id", auth, adminOnly, async (req, res) => {
+  const users = await readUsers();
+  const user = users.find((u) => u.id === req.params.id);
+  if (!user) return res.status(404).json({ success: false, message: "用户不存在" });
+  res.json({ success: true, data: user });
+});
+
+router.put("/admin/users/:id", auth, adminOnly, async (req: AuthedRequest, res) => {
+  const users = await readUsers();
+  const idx = users.findIndex((u) => u.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ success: false, message: "用户不存在" });
+  const target = users[idx];
+  const body = req.body as Partial<{
+    username: string;
+    password: string;
+    role: "admin" | "user";
+    status: "active" | "pending_review" | "rejected";
+    reviewNote: string;
+  }>;
+  if (body.username !== undefined) {
+    const username = body.username.trim();
+    if (!username) return res.status(400).json({ success: false, message: "用户名不能为空" });
+    const exists = users.some((u) => u.id !== target.id && u.username === username);
+    if (exists) return res.status(409).json({ success: false, message: "用户名已存在" });
+    target.username = username;
+  }
+  if (body.password !== undefined) {
+    if (!String(body.password).trim()) {
+      return res.status(400).json({ success: false, message: "密码不能为空" });
+    }
+    target.password = String(body.password);
+  }
+  if (body.role !== undefined) {
+    target.role = body.role;
+    if (body.role === "admin" && !target.status) {
+      target.status = "active";
+    }
+  }
+  if (body.status !== undefined) target.status = body.status;
+  if (body.reviewNote !== undefined) target.reviewNote = body.reviewNote;
+  if (target.id === req.userId && target.role !== "admin") {
+    return res.status(400).json({ success: false, message: "不能把当前登录管理员降级为普通用户" });
+  }
+  users[idx] = target;
+  await writeUsers(users);
+  res.json({ success: true, data: target });
+});
+
 router.post("/admin/users/:id/review", auth, adminOnly, async (req, res) => {
   const { action, note } = req.body as { action: "approve" | "reject"; note?: string };
   const users = await readUsers();
@@ -372,17 +421,71 @@ router.post("/products/:id/sold", auth, async (req: AuthedRequest, res) => {
     createdAt: new Date().toISOString(),
   };
 
-  products[idx].status = "offline";
+  products[idx].status = "sold";
   products[idx].updatedAt = new Date().toISOString();
 
   ordersData.push(newOrder);
 
-  await Promise.all([writeProducts(products), fs.writeFile(
-    path.join(DATA_DIR, "orders.json"),
-    JSON.stringify(ordersData, null, 2)
-  )]);
+  await Promise.all([
+    writeProducts(products),
+    fs.writeFile(path.join(DATA_DIR, "orders.json"), JSON.stringify(ordersData, null, 2)),
+  ]);
 
   res.json({ success: true, data: { product: products[idx], order: newOrder } });
+});
+
+router.post("/products/:id/purchase", auth, async (req: AuthedRequest, res) => {
+  const products = await readProducts();
+  const idx = products.findIndex((p) => p.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ success: false, message: "商品不存在" });
+  const target = products[idx];
+  if (target.status !== "approved") {
+    return res.status(400).json({ success: false, message: "该商品当前不可购买" });
+  }
+  if (target.sellerId === req.userId) {
+    return res.status(400).json({ success: false, message: "不能购买自己发布的商品" });
+  }
+  const users = await readUsers();
+  const buyer = users.find((u) => u.id === req.userId);
+  if (!buyer) return res.status(404).json({ success: false, message: "用户不存在" });
+  const ordersData = JSON.parse(
+    await fs.readFile(path.join(DATA_DIR, "orders.json"), "utf-8").catch(() => "[]")
+  ) as Order[];
+  const newOrder = {
+    id: newId("o"),
+    productId: target.id,
+    productTitle: target.title,
+    buyerId: req.userId!,
+    buyerName: buyer.username,
+    sellerId: target.sellerId,
+    sellerName: target.sellerName,
+    price: target.price,
+    status: "completed" as const,
+    createdAt: new Date().toISOString(),
+  };
+  products[idx].status = "sold";
+  products[idx].updatedAt = new Date().toISOString();
+  ordersData.push(newOrder);
+  await Promise.all([
+    writeProducts(products),
+    fs.writeFile(path.join(DATA_DIR, "orders.json"), JSON.stringify(ordersData, null, 2)),
+  ]);
+  res.json({ success: true, data: { product: products[idx], order: newOrder } });
+});
+
+router.delete("/admin/users/:id", auth, adminOnly, async (req: AuthedRequest, res) => {
+  const users = await readUsers();
+  const target = users.find((u) => u.id === req.params.id);
+  if (!target) return res.status(404).json({ success: false, message: "用户不存在" });
+  if (target.id === req.userId) {
+    return res.status(400).json({ success: false, message: "不能删除当前登录账号" });
+  }
+  if (target.id === "u-admin") {
+    return res.status(400).json({ success: false, message: "不能删除系统管理员" });
+  }
+  const nextUsers = users.filter((u) => u.id !== req.params.id);
+  await writeUsers(nextUsers);
+  res.json({ success: true });
 });
 
 router.get("/orders", auth, async (req: AuthedRequest, res) => {

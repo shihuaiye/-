@@ -1,0 +1,38 @@
+[
+  {
+    "id": "o-1777196712323-bkiu1r",
+    "productId": "p-1777196219071-4cli1x",
+    "productTitle": "123",
+    "buyerId": "u-system",
+    "buyerName": "系统模拟",
+    "sellerId": "u-1777184382178-n8t4mt",
+    "sellerName": "user2",
+    "price": 0,
+    "status": "completed",
+    "createdAt": "2026-04-26T09:45:12.323Z"
+  },
+  {
+    "id": "o-1777197503817-t55hbg",
+    "productId": "p-1777197210015-h1ndqw",
+    "productTitle": "124",
+    "buyerId": "u-system",
+    "buyerName": "user2",
+    "sellerId": "u-admin",
+    "sellerName": "admin",
+    "price": 0,
+    "status": "completed",
+    "createdAt": "2026-04-26T09:58:23.817Z"
+  },
+  {
+    "id": "o-1777200069021-3era11",
+    "productId": "p-sample-2",
+    "productTitle": "高数教材（同济第七版）",
+    "buyerId": "u-1777184382178-n8t4mt",
+    "buyerName": "user2",
+    "sellerId": "u-demo-user",
+    "sellerName": "user01",
+    "price": 25,
+    "status": "completed",
+    "createdAt": "2026-04-26T10:41:09.021Z"
+  }
+]

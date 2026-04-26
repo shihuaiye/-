@@ -27,5 +27,13 @@
     "role": "user",
     "status": "active",
     "createdAt": "2026-04-26T05:25:11.540Z"
+  },
+  {
+    "id": "u-1777184382178-n8t4mt",
+    "username": "user2",
+    "password": "asdf1234",
+    "role": "user",
+    "status": "active",
+    "createdAt": "2026-04-26T06:19:42.178Z"
   }
 ]

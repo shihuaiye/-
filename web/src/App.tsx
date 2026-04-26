@@ -1,81 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-
-type Role = "admin" | "user";
-type Status = "pending" | "approved" | "rejected" | "offline";
-type Category = "digital" | "book" | "daily" | "ticket" | "other";
-type Tab = "market" | "favorites" | "mine" | "manage" | "accounts";
-
-type User = {
-  id: string;
-  username: string;
-  role: Role;
-  status?: "active" | "pending_review" | "rejected";
-  reviewNote?: string;
-};
-
-type Product = {
-  id: string;
-  title: string;
-  description: string;
-  price: number;
-  category: Category;
-  images: string[];
-  campus: string;
-  brand?: string;
-  model?: string;
-  memory?: string;
-  status: Status;
-  rejectionReason?: string;
-  sellerName: string;
-  createdAt: string;
-};
-
-type ProductMessage = {
-  id: string;
-  productId: string;
-  fromUserId: string;
-  fromUsername: string;
-  toUserId?: string;
-  toUsername?: string;
-  content: string;
-  createdAt: string;
-};
-
-type Conversation = {
-  userId: string;
-  username: string;
-  lastMessage: string;
-  lastTime: string;
-  unreadCount: number;
-  productId?: string;
-};
-
-type Order = {
-  id: string;
-  productId: string;
-  productTitle: string;
-  buyerId: string;
-  buyerName: string;
-  sellerId: string;
-  sellerName: string;
-  price: number;
-  status: "completed";
-  createdAt: string;
-};
-
-const API = "http://localhost:3100/api";
-const PAGE_SIZE = 6;
-
-const passwordStrength = (pwd: string) => {
-  let score = 0;
-  if (pwd.length >= 8) score++;
-  if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score++;
-  if (/\d/.test(pwd)) score++;
-  if (/[^A-Za-z0-9]/.test(pwd)) score++;
-  if (score <= 1) return { label: "弱", color: "#dc2626", pass: false };
-  if (score <= 2) return { label: "中", color: "#f59e0b", pass: true };
-  return { label: "强", color: "#16a34a", pass: true };
-};
+import { AppSidebar } from "./components/AppSidebar";
+import { AuthView } from "./components/AuthView";
+import { AccountDetailModal, ChatModal, ProductDetailModal } from "./components/modals";
+import { AccountsTab, CartTab, FavoritesTab, ManageTab, MarketTab, MessagesTab, MineTab } from "./components/tabs";
+import { PRESET_LOCATIONS } from "./constants/locations";
+import { api } from "./services/api";
+import type { Category, Conversation, Order, Product, ProductMessage, PublishForm, Role, Status, Tab, User } from "./types";
+import { PAGE_SIZE, distanceKm, passwordStrength, toBase64 } from "./utils";
 
 export function App() {
   const [token, setToken] = useState(localStorage.getItem("sh-token") || "");
@@ -89,10 +20,10 @@ export function App() {
   const [detail, setDetail] = useState<Product | null>(null);
   const [messages, setMessages] = useState<ProductMessage[]>([]);
   const [messageInput, setMessageInput] = useState("");
+  const [messageImageFile, setMessageImageFile] = useState<File | null>(null);
   const [showRegister, setShowRegister] = useState(false);
-  const [favorites, setFavorites] = useState<string[]>(
-    JSON.parse(localStorage.getItem("sh-favorites") || "[]")
-  );
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [cart, setCart] = useState<string[]>([]);
 
   const [keyword, setKeyword] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<Category | "all">("all");
@@ -103,11 +34,24 @@ export function App() {
   const [chatTarget, setChatTarget] = useState<Conversation | null>(null);
   const [chatMessages, setChatMessages] = useState<ProductMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
+  const [chatImageFile, setChatImageFile] = useState<File | null>(null);
+  const [relatedProduct, setRelatedProduct] = useState<Product | null>(null);
+  const [lastSeenMessageTime, setLastSeenMessageTime] = useState("");
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [myPurchases, setMyPurchases] = useState<Order[]>([]);
   const [mySales, setMySales] = useState<Order[]>([]);
+  const [historyTab, setHistoryTab] = useState<"sales" | "purchases">("sales");
   const [recommendations, setRecommendations] = useState<Product[]>([]);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [accountDetail, setAccountDetail] = useState<User | null>(null);
+  const [accountForm, setAccountForm] = useState({
+    username: "",
+    password: "",
+    role: "user" as Role,
+    status: "active" as "active" | "pending_review" | "rejected",
+    reviewNote: "",
+  });
 
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [regForm, setRegForm] = useState({
@@ -115,36 +59,36 @@ export function App() {
     password: "",
     role: "user" as Role,
   });
-  const [publishForm, setPublishForm] = useState({
+  const [publishForm, setPublishForm] = useState<PublishForm>({
     title: "",
     description: "",
     price: 0,
     category: "daily" as Category,
-    imagesText: "",
+    images: [] as string[],
     campus: "",
     brand: "",
     model: "",
     memory: "",
+    latitude: undefined as number | undefined,
+    longitude: undefined as number | undefined,
   });
+  const [manualLocationLabel, setManualLocationLabel] = useState("");
 
   const authHeaders = (): HeadersInit =>
     token ? { Authorization: `Bearer ${token}` } : {};
+  const favoritesKey = user ? `sh-favorites-${user.id}` : "sh-favorites-guest";
+  const cartKey = user ? `sh-cart-${user.id}` : "sh-cart-guest";
+  const messageSeenKey = user ? `sh-msg-seen-${user.id}` : "sh-msg-seen-guest";
 
   const fetchMe = async () => {
     if (!token) return;
-    const res = await fetch(`${API}/auth/me`, { headers: authHeaders() });
-    const json = await res.json();
+    const json = await api.auth.me(authHeaders());
     if (!json.success) return;
     setUser(json.data);
   };
 
   const login = async () => {
-    const res = await fetch(`${API}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(loginForm),
-    });
-    const json = await res.json();
+    const json = await api.auth.login(loginForm);
     if (!json.success) return alert(json.message);
     setToken(json.data.token);
     setUser(json.data.user);
@@ -156,12 +100,7 @@ export function App() {
   const register = async () => {
     const strength = passwordStrength(regForm.password);
     if (!strength.pass) return alert("密码强度过弱，请至少满足8位并包含数字/字母组合");
-    const res = await fetch(`${API}/auth/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(regForm),
-    });
-    const json = await res.json();
+    const json = await api.auth.register(regForm);
     if (!json.success) return alert(json.message);
     alert(json.message || "注册成功，请登录");
     setShowRegister(false);
@@ -169,79 +108,69 @@ export function App() {
   };
 
   const loadAllForAdmin = async () => {
-    const res = await fetch(`${API}/products?mode=all`, { headers: authHeaders() });
-    const json = await res.json();
+    const json = await api.products.all(authHeaders());
     if (json.success) setAllProducts(json.data);
   };
 
   const loadMarket = async () => {
-    const res = await fetch(`${API}/products`, { headers: authHeaders() });
-    const json = await res.json();
+    const json = await api.products.market(authHeaders());
     if (json.success) setMarketProducts(json.data);
   };
 
   const loadMine = async () => {
-    const res = await fetch(`${API}/products?mode=mine`, { headers: authHeaders() });
-    const json = await res.json();
+    const json = await api.products.mine(authHeaders());
     if (json.success) setMyProducts(json.data);
   };
 
   const loadUsers = async () => {
     if (user?.role !== "admin") return;
-    const res = await fetch(`${API}/admin/users`, { headers: authHeaders() });
-    const json = await res.json();
+    const json = await api.admin.users(authHeaders());
     if (json.success) setAllUsers(json.data);
   };
 
   const loadDetail = async (id: string) => {
-    const res = await fetch(`${API}/products/${id}`, { headers: authHeaders() });
-    const json = await res.json();
+    const json = await api.products.detail(id, authHeaders());
     if (!json.success) return alert(json.message);
     setDetail(json.data);
-    const msgRes = await fetch(`${API}/products/${id}/messages`, {
-      headers: authHeaders(),
-    });
-    const msgJson = await msgRes.json();
+    const msgJson = await api.messages.byProduct(id, authHeaders());
     if (msgJson.success) setMessages(msgJson.data);
   };
 
   const sendMessage = async () => {
     if (!detail) return;
     const content = messageInput.trim();
-    if (!content) return;
-    const res = await fetch(`${API}/products/${detail.id}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ content }),
-    });
-    const json = await res.json();
+    const imageData = messageImageFile ? await toBase64(messageImageFile) : "";
+    if (!content && !imageData) return;
+    const finalContent = imageData
+      ? content
+        ? `${content}\n[图片: ${imageData}]`
+        : `[图片: ${imageData}]`
+      : content;
+    const json = await api.messages.sendToProduct(detail.id, finalContent, authHeaders());
     if (!json.success) return alert(json.message);
     setMessageInput("");
+    setMessageImageFile(null);
     await loadDetail(detail.id);
   };
 
   const publish = async () => {
-    const images = publishForm.imagesText
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    if (!publishForm.images.length) {
+      return alert("请至少选择一张商品图片");
+    }
     const payload = {
       title: publishForm.title,
       description: publishForm.description,
       price: Number(publishForm.price),
       category: publishForm.category,
-      images,
+      images: publishForm.images,
       campus: publishForm.campus,
       brand: publishForm.brand || undefined,
       model: publishForm.model || undefined,
       memory: publishForm.memory || undefined,
+      latitude: publishForm.latitude,
+      longitude: publishForm.longitude,
     };
-    const res = await fetch(`${API}/products`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify(payload),
-    });
-    const json = await res.json();
+    const json = await api.products.create(payload, authHeaders());
     if (!json.success) return alert(json.message);
     alert("发布成功，等待审核");
     setPublishForm({
@@ -249,34 +178,26 @@ export function App() {
       description: "",
       price: 0,
       category: "daily",
-      imagesText: "",
+      images: [],
       campus: "",
       brand: "",
       model: "",
       memory: "",
+      latitude: undefined,
+      longitude: undefined,
     });
     await Promise.all([loadMine(), loadMarket(), loadAllForAdmin()]);
   };
 
   const audit = async (id: string, action: "approve" | "reject") => {
     const reason = action === "reject" ? prompt("请输入拒绝理由") || "" : "";
-    const res = await fetch(`${API}/products/${id}/audit`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ action, reason }),
-    });
-    const json = await res.json();
+    const json = await api.products.audit(id, action, reason, authHeaders());
     if (!json.success) return alert(json.message);
     await Promise.all([loadAllForAdmin(), loadMarket()]);
   };
 
   const toggleStatus = async (id: string, status: "approved" | "offline") => {
-    const res = await fetch(`${API}/products/${id}/status`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ status }),
-    });
-    const json = await res.json();
+    const json = await api.products.status(id, status, authHeaders());
     if (!json.success) return alert(json.message);
     await Promise.all([loadAllForAdmin(), loadMarket()]);
   };
@@ -284,14 +205,64 @@ export function App() {
   const reviewAdminUser = async (id: string, action: "approve" | "reject") => {
     const note =
       prompt(action === "approve" ? "审核备注（可选）" : "拒绝理由（建议填写）") || "";
-    const res = await fetch(`${API}/admin/users/${id}/review`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ action, note }),
-    });
-    const json = await res.json();
+    const json = await api.admin.reviewUser(id, action, note, authHeaders());
     if (!json.success) return alert(json.message);
     await loadUsers();
+  };
+
+  const deleteUser = async (id: string, username: string) => {
+    if (!confirm(`确认删除账号 ${username}？该操作不可撤销。`)) return;
+    const json = await api.admin.deleteUser(id, authHeaders());
+    if (!json.success) return alert(json.message);
+    await loadUsers();
+  };
+
+  const loadAccountDetail = async (id: string) => {
+    const json = await api.admin.userDetail(id, authHeaders());
+    if (!json.success) return alert(json.message);
+    setAccountDetail(json.data);
+    setAccountForm({
+      username: json.data.username || "",
+      password: json.data.password || "",
+      role: json.data.role || "user",
+      status: json.data.status || "active",
+      reviewNote: json.data.reviewNote || "",
+    });
+  };
+
+  const saveAccountDetail = async () => {
+    if (!accountDetail) return;
+    const json = await api.admin.saveUser(accountDetail.id, accountForm, authHeaders());
+    if (!json.success) return alert(json.message);
+    alert("账号信息已更新");
+    await loadUsers();
+    setAccountDetail(json.data);
+  };
+
+  const markMessagesAsSeen = () => {
+    const now = new Date().toISOString();
+    setLastSeenMessageTime(now);
+    localStorage.setItem(messageSeenKey, now);
+  };
+
+  const pickCurrentLocation = () => {
+    if (!navigator.geolocation) return alert("当前浏览器不支持定位");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        setUserLocation({ latitude, longitude });
+        setPublishForm((prev) => ({ ...prev, latitude, longitude }));
+      },
+      () => alert("定位失败，请检查定位权限")
+    );
+  };
+
+  const onPublishImagesSelected = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const imageFiles = Array.from(files).slice(0, 6);
+    const images = await Promise.all(imageFiles.map((f) => toBase64(f)));
+    setPublishForm((prev) => ({ ...prev, images }));
   };
 
   const toggleFavorite = (id: string) => {
@@ -299,44 +270,111 @@ export function App() {
       ? favorites.filter((x) => x !== id)
       : [...favorites, id];
     setFavorites(next);
-    localStorage.setItem("sh-favorites", JSON.stringify(next));
+    localStorage.setItem(favoritesKey, JSON.stringify(next));
+  };
+
+  const toggleCart = (id: string) => {
+    const next = cart.includes(id) ? cart.filter((x) => x !== id) : [...cart, id];
+    setCart(next);
+    localStorage.setItem(cartKey, JSON.stringify(next));
+  };
+
+  const applyManualLocation = () => {
+    const location = PRESET_LOCATIONS.find((loc) => loc.label === manualLocationLabel);
+    if (!location) return;
+    setPublishForm((prev) => ({
+      ...prev,
+      campus: location.campus,
+      latitude: location.latitude,
+      longitude: location.longitude,
+    }));
+    setUserLocation({ latitude: location.latitude, longitude: location.longitude });
   };
 
   const loadConversations = async () => {
     if (!token || !user) return;
-    const res = await fetch(`${API}/conversations`, { headers: authHeaders() });
-    const json = await res.json();
+    const json = await api.conversations.list(authHeaders());
     if (json.success) setConversations(json.data);
   };
 
   const openChat = async (target: Conversation) => {
     setChatTarget(target);
-    const res = await fetch(`${API}/conversations/${target.userId}`, {
-      headers: authHeaders(),
-    });
-    const json = await res.json();
+    markMessagesAsSeen();
+    const json = await api.conversations.detail(target.userId, authHeaders());
+    if (json.success) setChatMessages(json.data);
+  };
+
+  const loadChatMessages = async (targetUserId: string) => {
+    const json = await api.conversations.detail(targetUserId, authHeaders());
     if (json.success) setChatMessages(json.data);
   };
 
   const sendChatMessage = async () => {
     if (!chatTarget) return;
     const content = chatInput.trim();
-    if (!content) return;
-    const res = await fetch(`${API}/conversations/${chatTarget.userId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ content }),
-    });
-    const json = await res.json();
+    const imageData = chatImageFile ? await toBase64(chatImageFile) : "";
+
+    if (!content && !imageData) {
+      alert("请输入消息内容或选择图片");
+      return;
+    }
+
+    let finalContent = content;
+    if (imageData) {
+      if (content) {
+        finalContent = `${content}\n[图片: ${imageData}]`;
+      } else {
+        finalContent = `[图片: ${imageData}]`;
+      }
+    }
+
+    const json = await api.conversations.send(chatTarget.userId, finalContent, authHeaders());
     if (!json.success) return alert(json.message);
     setChatInput("");
+    setChatImageFile(null);
     await openChat(chatTarget);
   };
 
+  useEffect(() => {
+    try {
+      if (chatMessages.length > 0) {
+        setTimeout(() => {
+          const container = document.getElementById("chat-messages-container");
+          if (container) {
+            container.scrollTop = container.scrollHeight;
+          }
+        }, 100);
+      }
+    } catch (error) {
+      console.error("Auto scroll error:", error);
+    }
+  }, [chatMessages]);
+
+  useEffect(() => {
+    if (!token || !user) return;
+    const timer = window.setInterval(() => {
+      loadConversations().catch(console.error);
+      loadOrders().catch(console.error);
+      loadRecommendations().catch(console.error);
+      if (detail) {
+        loadDetail(detail.id).catch(console.error);
+      }
+      if (chatTarget) {
+        loadChatMessages(chatTarget.userId).catch(console.error);
+      }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [token, user, detail?.id, chatTarget?.userId]);
+
   const contactSeller = async () => {
     if (!detail || !user) return;
+    if (detail.sellerId === user.id) {
+      alert("这是您自己发布的商品，无需联系卖家");
+      return;
+    }
+    setRelatedProduct(detail);
     const targetConv: Conversation = {
-      userId: detail.sellerId === user.id ? "" : detail.sellerId,
+      userId: detail.sellerId,
       username: detail.sellerName,
       lastMessage: "",
       lastTime: new Date().toISOString(),
@@ -348,21 +386,31 @@ export function App() {
 
   const markAsSold = async (product: Product) => {
     if (!confirm(`确认将"${product.title}"标记为已售出？`)) return;
-    const res = await fetch(`${API}/products/${product.id}/sold`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({}),
-    });
-    const json = await res.json();
+    const buyerName =
+      prompt("请输入买家昵称（可留空，默认系统模拟成交）")?.trim() || "系统模拟";
+    const json = await api.products.soldBySeller(product.id, buyerName, authHeaders());
     if (!json.success) return alert(json.message);
     alert("商品已标记为售出");
     await Promise.all([loadMine(), loadMarket(), loadAllForAdmin(), loadOrders()]);
   };
 
+  const buyFromCart = async (product: Product) => {
+    if (!user) return;
+    if (product.sellerId === user.id) {
+      alert("不能购买自己发布的商品");
+      return;
+    }
+    if (!confirm(`确认购买 "${product.title}" 吗？`)) return;
+    const json = await api.products.purchase(product.id, authHeaders());
+    if (!json.success) return alert(json.message);
+    alert("下单成功，交易已完成");
+    toggleCart(product.id);
+    await Promise.all([loadMarket(), loadMine(), loadOrders(), loadAllForAdmin()]);
+  };
+
   const loadOrders = async () => {
     if (!token || !user) return;
-    const res = await fetch(`${API}/orders`, { headers: authHeaders() });
-    const json = await res.json();
+    const json = await api.orders.list(authHeaders());
     if (json.success) {
       setOrders(json.data);
       setMyPurchases(json.data.filter((o: Order) => o.buyerId === user!.id));
@@ -372,8 +420,7 @@ export function App() {
 
   const loadRecommendations = async () => {
     if (!token || !user) return;
-    const res = await fetch(`${API}/recommendations`, { headers: authHeaders() });
-    const json = await res.json();
+    const json = await api.recommendations.list(authHeaders());
     if (json.success) setRecommendations(json.data);
   };
 
@@ -384,6 +431,7 @@ export function App() {
     setToken("");
     setUser(null);
     setDetail(null);
+    setCart([]);
   };
 
   const filteredMarket = useMemo(() => {
@@ -400,8 +448,13 @@ export function App() {
     } else if (sortBy === "time") {
       result = [...result].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
+    if (userLocation) {
+      result = [...result].sort(
+        (a, b) => distanceKm(userLocation, a) - distanceKm(userLocation, b)
+      );
+    }
     return result;
-  }, [marketProducts, keyword, categoryFilter, sortBy]);
+  }, [marketProducts, keyword, categoryFilter, sortBy, userLocation]);
 
   const pagedMarket = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE;
@@ -410,6 +463,7 @@ export function App() {
 
   const pageCount = Math.max(1, Math.ceil(filteredMarket.length / PAGE_SIZE));
   const favoriteProducts = marketProducts.filter((p) => favorites.includes(p.id));
+  const cartProducts = marketProducts.filter((p) => cart.includes(p.id));
   const adminFilteredProducts =
     adminProductTab === "all"
       ? allProducts
@@ -423,8 +477,14 @@ export function App() {
       approved: count("approved"),
       rejected: count("rejected"),
       offline: count("offline"),
+      sold: count("sold"),
     };
   }, [allProducts]);
+
+  const hasUnreadMessages = useMemo(() => {
+    if (!conversations.length) return false;
+    return conversations.some((conv) => conv.lastTime > lastSeenMessageTime);
+  }, [conversations, lastSeenMessageTime]);
 
   useEffect(() => {
     fetchMe();
@@ -432,14 +492,14 @@ export function App() {
 
   useEffect(() => {
     if (!token || !user) return;
-    loadMarket();
-    loadMine();
-    loadConversations();
-    loadOrders();
-    loadRecommendations();
+    loadMarket().catch(console.error);
+    loadMine().catch(console.error);
+    loadConversations().catch(console.error);
+    loadOrders().catch(console.error);
+    loadRecommendations().catch(console.error);
     if (user.role === "admin") {
-      loadAllForAdmin();
-      loadUsers();
+      loadAllForAdmin().catch(console.error);
+      loadUsers().catch(console.error);
       setActiveTab("manage");
     } else {
       setActiveTab("market");
@@ -447,145 +507,74 @@ export function App() {
   }, [token, user?.role]);
 
   useEffect(() => {
+    if (!token || !user || userLocation || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+      },
+      () => {}
+    );
+  }, [token, user?.id, userLocation]);
+
+  useEffect(() => {
+    if (!user) return;
+    setFavorites(JSON.parse(localStorage.getItem(favoritesKey) || "[]"));
+    setCart(JSON.parse(localStorage.getItem(cartKey) || "[]"));
+    setLastSeenMessageTime(localStorage.getItem(messageSeenKey) || "");
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (activeTab === "messages" && conversations.length > 0) {
+      markMessagesAsSeen();
+    }
+  }, [activeTab, conversations.length]);
+
+  useEffect(() => {
     setPage(1);
   }, [keyword, categoryFilter, sortBy]);
 
+  useEffect(() => {
+    const savedUsername = localStorage.getItem("sh-username");
+    const savedPassword = localStorage.getItem("sh-password");
+    if (savedUsername) {
+      setLoginForm({ username: savedUsername, password: savedPassword || "" });
+    }
+  }, []);
+
   if (!token || !user) {
     const strength = passwordStrength(regForm.password);
-    useEffect(() => {
-      const savedUsername = localStorage.getItem("sh-username");
-      const savedPassword = localStorage.getItem("sh-password");
-      if (savedUsername) {
-        setLoginForm({ username: savedUsername, password: savedPassword || "" });
-      }
-    }, []);
     return (
-      <div className="layout-auth">
-        <div className="auth-card">
-          <h1>校园二手交易平台</h1>
-          <p>演示账号：admin / admin123，普通用户：user01 / user123</p>
-          <input
-            placeholder="用户名"
-            value={loginForm.username}
-            onChange={(e) =>
-              setLoginForm({ ...loginForm, username: e.target.value })
-            }
-          />
-          <input
-            type="password"
-            placeholder="密码"
-            value={loginForm.password}
-            onChange={(e) =>
-              setLoginForm({ ...loginForm, password: e.target.value })
-            }
-          />
-          <div className="row">
-            <button onClick={login}>登录</button>
-            <button className="ghost" onClick={() => setShowRegister(true)}>
-              去注册
-            </button>
-            <button
-              className="ghost danger"
-              onClick={() => {
-                setLoginForm({ username: "", password: "" });
-                localStorage.removeItem("sh-username");
-                localStorage.removeItem("sh-password");
-              }}
-            >
-              清除
-            </button>
-          </div>
-        </div>
-
-        {showRegister && (
-          <div className="modal-mask" onClick={() => setShowRegister(false)}>
-            <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-              <h3>注册账号</h3>
-              <input
-                placeholder="用户名"
-                value={regForm.username}
-                onChange={(e) =>
-                  setRegForm({ ...regForm, username: e.target.value })
-                }
-              />
-              <input
-                type="password"
-                placeholder="密码"
-                value={regForm.password}
-                onChange={(e) =>
-                  setRegForm({ ...regForm, password: e.target.value })
-                }
-              />
-              <p style={{ color: strength.color, margin: "0 0 10px" }}>
-                密码强度：{strength.label}
-              </p>
-              <select
-                value={regForm.role}
-                onChange={(e) =>
-                  setRegForm({ ...regForm, role: e.target.value as Role })
-                }
-              >
-                <option value="user">普通用户</option>
-                <option value="admin">管理员（需审核）</option>
-              </select>
-              <div className="row">
-                <button onClick={register}>确认注册</button>
-                <button className="ghost" onClick={() => setShowRegister(false)}>
-                  取消
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      <AuthView
+        loginForm={loginForm}
+        regForm={regForm}
+        showRegister={showRegister}
+        strength={strength}
+        setLoginForm={setLoginForm}
+        setRegForm={setRegForm}
+        setShowRegister={setShowRegister}
+        onLogin={login}
+        onRegister={register}
+      />
     );
   }
 
   return (
     <div className="layout">
-      <aside className="sider">
-        <h2>Campus Market</h2>
-        <button
-          className={activeTab === "market" ? "menu active" : "menu"}
-          onClick={() => setActiveTab("market")}
-        >
-          商品展示
-        </button>
-        <button
-          className={activeTab === "favorites" ? "menu active" : "menu"}
-          onClick={() => setActiveTab("favorites")}
-        >
-          我的收藏
-        </button>
-        <button
-          className="menu"
-          onClick={() => loadConversations()}
-        >
-          消息{conversations.length > 0 && `(${conversations.length})`}
-        </button>
-        <button
-          className={activeTab === "mine" ? "menu active" : "menu"}
-          onClick={() => setActiveTab("mine")}
-        >
-          发布/我的商品
-        </button>
-        {user.role === "admin" && (
-          <button
-            className={activeTab === "manage" ? "menu active" : "menu"}
-            onClick={() => setActiveTab("manage")}
-          >
-            审核管理
-          </button>
-        )}
-        {user.role === "admin" && (
-          <button
-            className={activeTab === "accounts" ? "menu active" : "menu"}
-            onClick={() => setActiveTab("accounts")}
-          >
-            账号管理
-          </button>
-        )}
-      </aside>
+      <AppSidebar
+        user={user}
+        activeTab={activeTab}
+        conversationsCount={conversations.length}
+        hasUnreadMessages={hasUnreadMessages}
+        onTabChange={setActiveTab}
+        onOpenMessages={() => {
+          setActiveTab("messages");
+          loadConversations();
+          markMessagesAsSeen();
+        }}
+      />
 
       <main className="main">
         <header className="topbar">
@@ -596,646 +585,130 @@ export function App() {
         </header>
 
         {activeTab === "market" && (
-          <>
-            <section className="card">
-              <div className="row wrap">
-                <h3>商品广场</h3>
-                <input
-                  className="search"
-                  placeholder="搜索商品"
-                  value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
-                />
-                <select
-                  className="category"
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value as any)}
-                >
-                  <option value="all">全部分类</option>
-                  <option value="digital">数码</option>
-                  <option value="book">书籍</option>
-                  <option value="daily">日用</option>
-                  <option value="ticket">票券</option>
-                  <option value="other">其他</option>
-                </select>
-                <select
-                  className="sort"
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                >
-                  <option value="default">默认排序</option>
-                  <option value="price-asc">价格从低到高</option>
-                  <option value="price-desc">价格从高到低</option>
-                  <option value="time">最新发布</option>
-                </select>
-              </div>
-            </section>
-
-            <section className="grid">
-              {pagedMarket.map((p) => (
-                <article key={p.id} className="product-card">
-                  <img src={p.images?.[0]} alt={p.title} className="thumb" />
-                  <div className="row">
-                    <h4>{p.title}</h4>
-                    <button
-                      className={
-                        favorites.includes(p.id) ? "small fav active" : "small fav"
-                      }
-                      onClick={() => toggleFavorite(p.id)}
-                    >
-                      {favorites.includes(p.id) ? "已收藏" : "收藏"}
-                    </button>
-                  </div>
-                  <p className="muted">{p.description.slice(0, 52)}...</p>
-                  <div className="row">
-                    <strong>¥{p.price}</strong>
-                    <span>{p.campus}</span>
-                  </div>
-                  <div className="meta">
-                    发布时间：{new Date(p.createdAt).toLocaleDateString("zh-CN")}
-                  </div>
-                  <div className="seller-block">卖家：{p.sellerName}</div>
-                  <button className="small" onClick={() => loadDetail(p.id)}>
-                    查看详情
-                  </button>
-                </article>
-              ))}
-            </section>
-
-            <section className="card pagination">
-              <button
-                className="ghost"
-                disabled={page <= 1}
-                onClick={() => setPage((x) => Math.max(1, x - 1))}
-              >
-                上一页
-              </button>
-              <span>
-                第 {page} / {pageCount} 页
-              </span>
-              <button
-                className="ghost"
-                disabled={page >= pageCount}
-                onClick={() => setPage((x) => Math.min(pageCount, x + 1))}
-              >
-                下一页
-              </button>
-            </section>
-
-            {recommendations.length > 0 && (
-              <section className="card" style={{ marginTop: 24 }}>
-                <h3>为你推荐</h3>
-                <p className="muted">基于你的购买历史和浏览偏好推荐</p>
-                <div className="grid">
-                  {recommendations.map((p) => (
-                    <article key={p.id} className="product-card">
-                      <img src={p.images?.[0]} alt={p.title} className="thumb" />
-                      <div className="row">
-                        <h4>{p.title}</h4>
-                        <button
-                          className={
-                            favorites.includes(p.id) ? "small fav active" : "small fav"
-                          }
-                          onClick={() => toggleFavorite(p.id)}
-                        >
-                          {favorites.includes(p.id) ? "已收藏" : "收藏"}
-                        </button>
-                      </div>
-                      <p className="muted">{p.description.slice(0, 52)}...</p>
-                      <div className="row">
-                        <strong>¥{p.price}</strong>
-                        <span>{p.campus}</span>
-                      </div>
-                      <div className="meta">
-                        发布时间：{new Date(p.createdAt).toLocaleDateString("zh-CN")}
-                      </div>
-                      <button className="small" onClick={() => loadDetail(p.id)}>
-                        查看详情
-                      </button>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            )}
-          </>
+          <MarketTab
+            keyword={keyword}
+            setKeyword={setKeyword}
+            categoryFilter={categoryFilter}
+            setCategoryFilter={setCategoryFilter}
+            sortBy={sortBy}
+            setSortBy={setSortBy}
+            userLocation={userLocation}
+            pickCurrentLocation={pickCurrentLocation}
+            pagedMarket={pagedMarket}
+            favorites={favorites}
+            toggleFavorite={toggleFavorite}
+            loadDetail={loadDetail}
+            page={page}
+            pageCount={pageCount}
+            setPage={setPage}
+            recommendations={recommendations}
+            cart={cart}
+            toggleCart={toggleCart}
+          />
         )}
 
         {activeTab === "favorites" && (
-          <section className="card">
-            <h3>我的收藏</h3>
-            {favoriteProducts.length === 0 ? (
-              <p className="muted">暂无收藏商品，去商品展示页看看吧。</p>
-            ) : (
-              <div className="grid">
-                {favoriteProducts.map((p) => (
-                  <article key={p.id} className="product-card">
-                    <img src={p.images?.[0]} alt={p.title} className="thumb" />
-                    <h4>{p.title}</h4>
-                    <div className="row">
-                      <strong>¥{p.price}</strong>
-                      <span>{p.campus}</span>
-                    </div>
-                    <div className="row">
-                      <button className="small" onClick={() => loadDetail(p.id)}>
-                        查看详情
-                      </button>
-                      <button className="small ghost" onClick={() => toggleFavorite(p.id)}>
-                        取消收藏
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
+          <FavoritesTab
+            favoriteProducts={favoriteProducts}
+            loadDetail={loadDetail}
+            toggleFavorite={toggleFavorite}
+          />
+        )}
+
+        {activeTab === "cart" && (
+          <CartTab
+            cartProducts={cartProducts}
+            removeFromCart={toggleCart}
+            loadDetail={loadDetail}
+            buyNow={buyFromCart}
+          />
         )}
 
         {activeTab === "mine" && (
-          <>
-            <section className="card">
-              <h3>发布商品</h3>
-              <input
-                placeholder="标题"
-                value={publishForm.title}
-                onChange={(e) =>
-                  setPublishForm({ ...publishForm, title: e.target.value })
-                }
-              />
-              <textarea
-                placeholder="介绍"
-                value={publishForm.description}
-                onChange={(e) =>
-                  setPublishForm({ ...publishForm, description: e.target.value })
-                }
-              />
-              <div className="row">
-                <input
-                  type="number"
-                  placeholder="价格"
-                  value={publishForm.price}
-                  onChange={(e) =>
-                    setPublishForm({
-                      ...publishForm,
-                      price: Number(e.target.value),
-                    })
-                  }
-                />
-                <input
-                  placeholder="交易地点/校区"
-                  value={publishForm.campus}
-                  onChange={(e) =>
-                    setPublishForm({ ...publishForm, campus: e.target.value })
-                  }
-                />
-              </div>
-              <select
-                value={publishForm.category}
-                onChange={(e) =>
-                  setPublishForm({
-                    ...publishForm,
-                    category: e.target.value as Category,
-                  })
-                }
-              >
-                <option value="daily">日用</option>
-                <option value="digital">数码</option>
-                <option value="book">书籍</option>
-                <option value="ticket">票券</option>
-                <option value="other">其他</option>
-              </select>
-              <textarea
-                placeholder="商品图片URL（可多张，每行一张）"
-                value={publishForm.imagesText}
-                onChange={(e) =>
-                  setPublishForm({ ...publishForm, imagesText: e.target.value })
-                }
-              />
-              {publishForm.category === "digital" && (
-                <div className="row">
-                  <input
-                    placeholder="品牌（必填）"
-                    value={publishForm.brand}
-                    onChange={(e) =>
-                      setPublishForm({ ...publishForm, brand: e.target.value })
-                    }
-                  />
-                  <input
-                    placeholder="型号（必填）"
-                    value={publishForm.model}
-                    onChange={(e) =>
-                      setPublishForm({ ...publishForm, model: e.target.value })
-                    }
-                  />
-                  <input
-                    placeholder="内存容量（必填）"
-                    value={publishForm.memory}
-                    onChange={(e) =>
-                      setPublishForm({ ...publishForm, memory: e.target.value })
-                    }
-                  />
-                </div>
-              )}
-              <button onClick={publish}>提交审核</button>
-            </section>
-            <section className="card">
-              <h3>我的商品</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>标题</th>
-                    <th>价格</th>
-                    <th>状态</th>
-                    <th>拒绝原因</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {myProducts.map((p) => (
-                    <tr key={p.id}>
-                      <td>{p.title}</td>
-                      <td>¥{p.price}</td>
-                      <td>{p.status}</td>
-                      <td>{p.rejectionReason || "-"}</td>
-                      <td>
-                        {p.status === "approved" && (
-                          <button
-                            className="small danger"
-                            onClick={() => markAsSold(p)}
-                          >
-                            标记已售
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </section>
-
-            <section className="card">
-              <h3>交易历史</h3>
-              <div style={{ marginBottom: 12 }}>
-                <button
-                  className={activeTab === "mine" ? "small" : "small ghost"}
-                  onClick={() => { }}
-                >
-                  我卖出的({mySales.length})
-                </button>
-                <button
-                  className="small ghost"
-                  onClick={() => { }}
-                >
-                  我买的({myPurchases.length})
-                </button>
-              </div>
-              {mySales.length > 0 && (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>商品名称</th>
-                      <th>买家</th>
-                      <th>价格</th>
-                      <th>成交时间</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {mySales.map((o) => (
-                      <tr key={o.id}>
-                        <td>{o.productTitle}</td>
-                        <td>{o.buyerName}</td>
-                        <td>¥{o.price}</td>
-                        <td>{new Date(o.createdAt).toLocaleString("zh-CN")}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-              {myPurchases.length > 0 && (
-                <table style={{ marginTop: 16 }}>
-                  <thead>
-                    <tr>
-                      <th>商品名称</th>
-                      <th>卖家</th>
-                      <th>价格</th>
-                      <th>购买时间</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {myPurchases.map((o) => (
-                      <tr key={o.id}>
-                        <td>{o.productTitle}</td>
-                        <td>{o.sellerName}</td>
-                        <td>¥{o.price}</td>
-                        <td>{new Date(o.createdAt).toLocaleString("zh-CN")}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-              {mySales.length === 0 && myPurchases.length === 0 && (
-                <p className="muted">暂无交易记录</p>
-              )}
-            </section>
-          </>
+          <MineTab
+            publishForm={publishForm}
+            setPublishForm={setPublishForm}
+            onPublishImagesSelected={onPublishImagesSelected}
+            pickCurrentLocation={pickCurrentLocation}
+            publish={publish}
+            myProducts={myProducts}
+            markAsSold={markAsSold}
+            historyTab={historyTab}
+            setHistoryTab={setHistoryTab}
+            mySales={mySales}
+            myPurchases={myPurchases}
+            presetLocations={PRESET_LOCATIONS}
+            manualLocationLabel={manualLocationLabel}
+            setManualLocationLabel={setManualLocationLabel}
+            applyManualLocation={applyManualLocation}
+          />
         )}
 
         {activeTab === "manage" && user.role === "admin" && (
-          <>
-            <section className="stats">
-              <div className="stat">
-                待审核 <b>{adminStats.pending}</b>
-              </div>
-              <div className="stat">
-                已通过 <b>{adminStats.approved}</b>
-              </div>
-              <div className="stat">
-                已拒绝 <b>{adminStats.rejected}</b>
-              </div>
-              <div className="stat">
-                已下线 <b>{adminStats.offline}</b>
-              </div>
-            </section>
-            <section className="card">
-              <h3>审核管理</h3>
-              <div className="row wrap" style={{ marginBottom: 12 }}>
-                <button
-                  className={adminProductTab === "all" ? "small" : "small ghost"}
-                  onClick={() => setAdminProductTab("all")}
-                >
-                  全部({allProducts.length})
-                </button>
-                <button
-                  className={
-                    adminProductTab === "pending" ? "small" : "small ghost"
-                  }
-                  onClick={() => setAdminProductTab("pending")}
-                >
-                  待审核({adminStats.pending})
-                </button>
-                <button
-                  className={
-                    adminProductTab === "approved" ? "small" : "small ghost"
-                  }
-                  onClick={() => setAdminProductTab("approved")}
-                >
-                  已通过({adminStats.approved})
-                </button>
-                <button
-                  className={
-                    adminProductTab === "rejected" ? "small" : "small ghost"
-                  }
-                  onClick={() => setAdminProductTab("rejected")}
-                >
-                  已拒绝({adminStats.rejected})
-                </button>
-                <button
-                  className={
-                    adminProductTab === "offline" ? "small" : "small ghost"
-                  }
-                  onClick={() => setAdminProductTab("offline")}
-                >
-                  已下线({adminStats.offline})
-                </button>
-              </div>
-              <table>
-                <thead>
-                  <tr>
-                    <th>标题</th>
-                    <th>分类</th>
-                    <th>价格</th>
-                    <th>状态</th>
-                    <th>拒绝原因</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {adminFilteredProducts.map((p) => (
-                    <tr key={p.id}>
-                      <td>{p.title}</td>
-                      <td>{p.category}</td>
-                      <td>¥{p.price}</td>
-                      <td>{p.status}</td>
-                      <td>{p.rejectionReason || "-"}</td>
-                      <td>
-                        {p.status === "pending" && (
-                          <>
-                            <button
-                              className="small"
-                              onClick={() => audit(p.id, "approve")}
-                            >
-                              通过
-                            </button>
-                            <button
-                              className="small danger"
-                              onClick={() => audit(p.id, "reject")}
-                            >
-                              拒绝
-                            </button>
-                          </>
-                        )}
-                        {p.status === "approved" && (
-                          <button
-                            className="small danger"
-                            onClick={() => toggleStatus(p.id, "offline")}
-                          >
-                            下线
-                          </button>
-                        )}
-                        {p.status === "offline" && (
-                          <button
-                            className="small"
-                            onClick={() => toggleStatus(p.id, "approved")}
-                          >
-                            恢复
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </section>
-          </>
+          <ManageTab
+            adminStats={adminStats}
+            adminProductTab={adminProductTab}
+            setAdminProductTab={setAdminProductTab}
+            allProducts={allProducts}
+            adminFilteredProducts={adminFilteredProducts}
+            audit={audit}
+            toggleStatus={toggleStatus}
+          />
         )}
 
         {activeTab === "accounts" && user.role === "admin" && (
-          <section className="card">
-            <h3>账号管理（管理员注册审核）</h3>
-            <table>
-              <thead>
-                <tr>
-                  <th>用户名</th>
-                  <th>角色</th>
-                  <th>状态</th>
-                  <th>备注</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {allUsers.map((u) => (
-                  <tr key={u.id}>
-                    <td>{u.username}</td>
-                    <td>{u.role}</td>
-                    <td>{u.status || "active"}</td>
-                    <td>{u.reviewNote || "-"}</td>
-                    <td>
-                      {u.role === "admin" && u.status === "pending_review" && (
-                        <>
-                          <button
-                            className="small"
-                            onClick={() => reviewAdminUser(u.id, "approve")}
-                          >
-                            通过
-                          </button>
-                          <button
-                            className="small danger"
-                            onClick={() => reviewAdminUser(u.id, "reject")}
-                          >
-                            拒绝
-                          </button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
+          <AccountsTab
+            allUsers={allUsers}
+            user={user}
+            loadAccountDetail={loadAccountDetail}
+            reviewAdminUser={reviewAdminUser}
+            deleteUser={deleteUser}
+          />
         )}
 
-        {detail && (
-          <div className="modal-mask" onClick={() => setDetail(null)}>
-            <div className="detail-modal" onClick={(e) => e.stopPropagation()}>
-              <h3>{detail.title}</h3>
-              <div className="detail-images">
-                {detail.images.map((img, i) => (
-                  <img key={i} src={img} alt={`图片${i + 1}`} />
-                ))}
-              </div>
-              <p>{detail.description}</p>
-              <p>
-                <b>价格：</b>¥{detail.price}
-              </p>
-              <p>
-                <b>地点：</b>
-                {detail.campus}
-              </p>
-              <p>
-                <b>卖家：</b>
-                {detail.sellerName}
-              </p>
-              <p>
-                <b>发布时间：</b>
-                {new Date(detail.createdAt).toLocaleString("zh-CN")}
-              </p>
-              {detail.category === "digital" && (
-                <p>
-                  <b>规格：</b>
-                  {detail.brand} / {detail.model} / {detail.memory}
-                </p>
-              )}
-              <div className="row">
-                <button
-                  className={
-                    favorites.includes(detail.id) ? "small fav active" : "small fav"
-                  }
-                  onClick={() => toggleFavorite(detail.id)}
-                >
-                  {favorites.includes(detail.id) ? "取消收藏" : "收藏商品"}
-                </button>
-                {detail.sellerId !== user?.id && (
-                  <button className="small" onClick={contactSeller}>
-                    联系卖家
-                  </button>
-                )}
-                <button className="ghost" onClick={() => setDetail(null)}>
-                  关闭
-                </button>
-              </div>
+        <AccountDetailModal
+          accountDetail={accountDetail}
+          accountForm={accountForm}
+          setAccountForm={setAccountForm}
+          setAccountDetail={setAccountDetail}
+          saveAccountDetail={saveAccountDetail}
+        />
 
-              <hr style={{ border: "none", borderTop: "1px solid #e2e8f0", margin: "12px 0" }} />
-              <h4>联系卖家 / 留言</h4>
-              <div className="message-list">
-                {messages.map((m) => (
-                  <div key={m.id} className="message-item">
-                    <b>{m.fromUsername}</b>
-                    <span className="muted">
-                      {" "}
-                      {new Date(m.createdAt).toLocaleString("zh-CN")}
-                    </span>
-                    <p>{m.content}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="row">
-                <input
-                  placeholder="输入留言内容..."
-                  value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
-                />
-                <button onClick={sendMessage}>发送</button>
-              </div>
-            </div>
-          </div>
+        {activeTab === "messages" && (
+          <MessagesTab
+            conversations={conversations}
+            lastSeenMessageTime={lastSeenMessageTime}
+            openChat={openChat}
+          />
         )}
 
-        {chatTarget && (
-          <div className="modal-mask" onClick={() => setChatTarget(null)}>
-            <div className="chat-modal" onClick={(e) => e.stopPropagation()}>
-              <h3>与 {chatTarget.username} 对话</h3>
-              <div className="chat-messages">
-                {chatMessages.map((m) => (
-                  <div
-                    key={m.id}
-                    className={`chat-bubble ${m.fromUserId === user?.id ? "mine" : "other"}`}
-                  >
-                    <b>{m.fromUsername}</b>
-                    <p>{m.content}</p>
-                    <span className="muted">
-                      {new Date(m.createdAt).toLocaleTimeString("zh-CN")}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div className="row">
-                <input
-                  placeholder="输入消息..."
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") sendChatMessage();
-                  }}
-                />
-                <button onClick={sendChatMessage}>发送</button>
-              </div>
-            </div>
-          </div>
-        )}
+        <ProductDetailModal
+          detail={detail}
+          setDetail={setDetail}
+          favorites={favorites}
+          toggleFavorite={toggleFavorite}
+          user={user}
+          contactSeller={contactSeller}
+          messages={messages}
+          setMessageImageFile={setMessageImageFile}
+          messageInput={messageInput}
+          setMessageInput={setMessageInput}
+          sendMessage={sendMessage}
+        />
 
-        {!chatTarget && conversations.length > 0 && (
-          <div className="modal-mask" onClick={() => { }}>
-            <div className="chat-list-modal" onClick={(e) => e.stopPropagation()}>
-              <h3>消息列表</h3>
-              {conversations.map((conv) => (
-                <div key={conv.userId} className="conv-item" onClick={() => openChat(conv)}>
-                  <div className="row">
-                    <b>{conv.username}</b>
-                    {conv.unreadCount > 0 && (
-                      <span className="badge">{conv.unreadCount}</span>
-                    )}
-                  </div>
-                  <p className="muted">{conv.lastMessage}</p>
-                  <span className="muted">
-                    {new Date(conv.lastTime).toLocaleString("zh-CN")}
-                  </span>
-                </div>
-              ))}
-              <button className="ghost" onClick={() => setConversations([])}>
-                关闭
-              </button>
-            </div>
-          </div>
-        )}
+        <ChatModal
+          chatTarget={chatTarget}
+          setChatTarget={setChatTarget}
+          relatedProduct={relatedProduct}
+          setRelatedProduct={setRelatedProduct}
+          chatMessages={chatMessages}
+          user={user}
+          chatInput={chatInput}
+          setChatInput={setChatInput}
+          setChatImageFile={setChatImageFile}
+          sendChatMessage={sendChatMessage}
+        />
+
       </main>
     </div>
   );

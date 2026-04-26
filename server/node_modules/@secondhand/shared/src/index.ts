@@ -10,7 +10,7 @@ export interface User {
   createdAt: string;
 }
 
-export type ProductStatus = "pending" | "approved" | "rejected" | "offline";
+export type ProductStatus = "pending" | "approved" | "rejected" | "offline" | "sold";
 
 export interface Product {
   id: string;
@@ -23,6 +23,8 @@ export interface Product {
   brand?: string;
   model?: string;
   memory?: string;
+  latitude?: number;
+  longitude?: number;
   status: ProductStatus;
   rejectionReason?: string;
   sellerId: string;
@@ -52,6 +54,8 @@ export interface CreateProductBody {
   brand?: string;
   model?: string;
   memory?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface ProductMessage {
@@ -59,6 +63,8 @@ export interface ProductMessage {
   productId: string;
   fromUserId: string;
   fromUsername: string;
+  toUserId?: string;
+  toUsername?: string;
   content: string;
   createdAt: string;
 }
