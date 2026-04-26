@@ -1,0 +1,106 @@
+import fs from "fs/promises";
+import path from "path";
+const dataDir = path.join(process.cwd(), "src", "data");
+const usersFile = path.join(dataDir, "users.json");
+const productsFile = path.join(dataDir, "products.json");
+const ensureInit = async () => {
+    const users = await readUsers();
+    const products = await readProducts();
+    let changed = false;
+    if (users.length === 0) {
+        const now = new Date().toISOString();
+        users.push({
+            id: "u-admin",
+            username: "admin",
+            password: "admin123",
+            role: "admin",
+            createdAt: now,
+        });
+        users.push({
+            id: "u-demo-user",
+            username: "user01",
+            password: "user123",
+            role: "user",
+            createdAt: now,
+        });
+        changed = true;
+    }
+    if (products.length === 0) {
+        const now = new Date().toISOString();
+        const sampleProducts = [
+            {
+                id: "p-sample-1",
+                title: "MacBook Air M1 8+256",
+                description: "大二自用，轻微使用痕迹，电池健康良好，送电脑包。",
+                price: 4200,
+                category: "digital",
+                images: [
+                    "https://images.unsplash.com/photo-1517336714739-489689fd1ca8?auto=format&fit=crop&w=900&q=80",
+                    "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=900&q=80"
+                ],
+                campus: "主校区",
+                brand: "Apple",
+                model: "MacBook Air M1",
+                memory: "8GB+256GB",
+                status: "approved",
+                sellerId: "u-demo-user",
+                sellerName: "user01",
+                createdAt: now,
+                updatedAt: now
+            },
+            {
+                id: "p-sample-2",
+                title: "高数教材（同济第七版）",
+                description: "内容完整，有少量笔记，适合期末复习。",
+                price: 25,
+                category: "book",
+                images: [
+                    "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=900&q=80"
+                ],
+                campus: "南校区",
+                status: "approved",
+                sellerId: "u-demo-user",
+                sellerName: "user01",
+                createdAt: now,
+                updatedAt: now
+            },
+            {
+                id: "p-sample-3",
+                title: "桌面台灯",
+                description: "可三档调光，宿舍可用，九成新。",
+                price: 35,
+                category: "daily",
+                images: [
+                    "https://images.unsplash.com/photo-1534073828943-f801091bb18c?auto=format&fit=crop&w=900&q=80"
+                ],
+                campus: "东校区",
+                status: "approved",
+                sellerId: "u-demo-user",
+                sellerName: "user01",
+                createdAt: now,
+                updatedAt: now
+            }
+        ];
+        await writeProducts(sampleProducts);
+        changed = true;
+    }
+    if (changed) {
+        await writeUsers(users);
+    }
+};
+export const initDb = ensureInit;
+export const readUsers = async () => {
+    const raw = await fs.readFile(usersFile, "utf-8");
+    return JSON.parse(raw);
+};
+export const writeUsers = async (users) => {
+    await fs.writeFile(usersFile, JSON.stringify(users, null, 2));
+};
+export const readProducts = async () => {
+    const raw = await fs.readFile(productsFile, "utf-8");
+    return JSON.parse(raw);
+};
+export const writeProducts = async (products) => {
+    await fs.writeFile(productsFile, JSON.stringify(products, null, 2));
+};
+export const newId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

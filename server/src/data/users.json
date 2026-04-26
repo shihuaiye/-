@@ -1,0 +1,31 @@
+[
+  {
+    "id": "u-admin",
+    "username": "admin",
+    "password": "admin123",
+    "role": "admin",
+    "createdAt": "2026-04-26T04:18:00.313Z"
+  },
+  {
+    "id": "u-1777177623701-z29v7p",
+    "username": "admin1",
+    "password": "123456",
+    "role": "buyer",
+    "createdAt": "2026-04-26T04:27:03.701Z"
+  },
+  {
+    "id": "u-1777178673278-s0bp3d",
+    "username": "user11",
+    "password": "huuyee1238",
+    "role": "user",
+    "createdAt": "2026-04-26T04:44:33.278Z"
+  },
+  {
+    "id": "u-1777181111540-xydppa",
+    "username": "user111",
+    "password": "huuyee5667788",
+    "role": "user",
+    "status": "active",
+    "createdAt": "2026-04-26T05:25:11.540Z"
+  }
+]

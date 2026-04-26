@@ -1,0 +1,70 @@
+[
+  {
+    "id": "p-sample-1",
+    "title": "MacBook Air M1 8+256",
+    "description": "大二自用，轻微使用痕迹，电池健康良好，送电脑包。",
+    "price": 4200,
+    "category": "digital",
+    "images": [
+      "https://images.unsplash.com/photo-1517336714739-489689fd1ca8?auto=format&fit=crop&w=900&q=80",
+      "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=900&q=80"
+    ],
+    "campus": "主校区",
+    "brand": "Apple",
+    "model": "MacBook Air M1",
+    "memory": "8GB+256GB",
+    "status": "approved",
+    "sellerId": "u-demo-user",
+    "sellerName": "user01",
+    "createdAt": "2026-04-26T04:33:30.590Z",
+    "updatedAt": "2026-04-26T04:33:30.590Z"
+  },
+  {
+    "id": "p-sample-2",
+    "title": "高数教材（同济第七版）",
+    "description": "内容完整，有少量笔记，适合期末复习。",
+    "price": 25,
+    "category": "book",
+    "images": [
+      "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=900&q=80"
+    ],
+    "campus": "南校区",
+    "status": "approved",
+    "sellerId": "u-demo-user",
+    "sellerName": "user01",
+    "createdAt": "2026-04-26T04:33:30.590Z",
+    "updatedAt": "2026-04-26T04:33:30.590Z"
+  },
+  {
+    "id": "p-sample-3",
+    "title": "桌面台灯",
+    "description": "可三档调光，宿舍可用，九成新。",
+    "price": 35,
+    "category": "daily",
+    "images": [
+      "https://images.unsplash.com/photo-1534073828943-f801091bb18c?auto=format&fit=crop&w=900&q=80"
+    ],
+    "campus": "东校区",
+    "status": "approved",
+    "sellerId": "u-demo-user",
+    "sellerName": "user01",
+    "createdAt": "2026-04-26T04:33:30.590Z",
+    "updatedAt": "2026-04-26T04:33:30.590Z"
+  },
+  {
+    "id": "p-1777178769869-j2bd4b",
+    "title": "新款iphone",
+    "description": "1111",
+    "price": 1200,
+    "category": "daily",
+    "images": [
+      "https://ts4.tc.mm.bing.net/th/id/OIP-C.r-7vKtU4zInF05BV_5QhcAHaHa?rs=1&pid=ImgDetMain&o=7&rm=3"
+    ],
+    "campus": "武汉大学",
+    "status": "approved",
+    "sellerId": "u-1777178673278-s0bp3d",
+    "sellerName": "user11",
+    "createdAt": "2026-04-26T04:46:09.869Z",
+    "updatedAt": "2026-04-26T04:46:42.139Z"
+  }
+]

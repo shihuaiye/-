@@ -1,0 +1,10 @@
+[
+  {
+    "id": "m-sample-1",
+    "productId": "p-sample-1",
+    "fromUserId": "u-admin",
+    "fromUsername": "admin",
+    "content": "这台还在吗？可以小刀吗？",
+    "createdAt": "2026-04-26T04:49:34.810Z"
+  }
+]

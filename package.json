@@ -1,0 +1,11 @@
+{
+  "name": "pc-secondhand",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev:server": "pnpm --filter secondhand-server dev",
+    "dev:web": "pnpm --filter secondhand-web dev",
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build"
+  }
+}
