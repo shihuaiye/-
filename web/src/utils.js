@@ -1,4 +1,4 @@
-export const PAGE_SIZE = 6;
+export const PAGE_SIZE = 4;
 export const passwordStrength = (pwd) => {
     let score = 0;
     if (pwd.length >= 8)

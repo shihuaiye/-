@@ -1,6 +1,6 @@
 import type { Product } from "./types";
 
-export const PAGE_SIZE = 6;
+export const PAGE_SIZE = 4;
 
 export const passwordStrength = (pwd: string) => {
   let score = 0;
@@ -23,9 +23,10 @@ export const toBase64 = (file: File) =>
 
 export const distanceKm = (
   a: { latitude: number; longitude: number },
-  b: Pick<Product, "latitude" | "longitude">
+  b: Pick<Product, "latitude" | "longitude">,
 ) => {
-  if (typeof b.latitude !== "number" || typeof b.longitude !== "number") return Number.POSITIVE_INFINITY;
+  if (typeof b.latitude !== "number" || typeof b.longitude !== "number")
+    return Number.POSITIVE_INFINITY;
   const toRad = (x: number) => (x * Math.PI) / 180;
   const R = 6371;
   const dLat = toRad(b.latitude - a.latitude);

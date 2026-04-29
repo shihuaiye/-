@@ -11,7 +11,10 @@ const API = "http://localhost:3100/api";
 
 type ApiResponse<T> = { success: boolean; message?: string; data: T };
 
-async function request<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<ApiResponse<T>> {
   const res = await fetch(`${API}${path}`, init);
   return res.json();
 }
@@ -25,7 +28,12 @@ export const api = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       }),
-    register: (payload: { username: string; password: string; role: Role }) =>
+    register: (payload: {
+      username: string;
+      password: string;
+      role: Role;
+      school?: string;
+    }) =>
       request<{ token?: string; user?: User }>("/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -33,10 +41,14 @@ export const api = {
       }),
   },
   products: {
-    all: (headers: HeadersInit) => request<Product[]>("/products?mode=all", { headers }),
-    market: (headers: HeadersInit) => request<Product[]>("/products", { headers }),
-    mine: (headers: HeadersInit) => request<Product[]>("/products?mode=mine", { headers }),
-    detail: (id: string, headers: HeadersInit) => request<Product>(`/products/${id}`, { headers }),
+    all: (headers: HeadersInit) =>
+      request<Product[]>("/products?mode=all", { headers }),
+    market: (headers: HeadersInit) =>
+      request<Product[]>("/products", { headers }),
+    mine: (headers: HeadersInit) =>
+      request<Product[]>("/products?mode=mine", { headers }),
+    detail: (id: string, headers: HeadersInit) =>
+      request<Product>(`/products/${id}`, { headers }),
     create: (
       payload: {
         title: string;
@@ -51,20 +63,29 @@ export const api = {
         latitude?: number;
         longitude?: number;
       },
-      headers: HeadersInit
+      headers: HeadersInit,
     ) =>
       request<Product>("/products", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify(payload),
       }),
-    audit: (id: string, action: "approve" | "reject", reason: string, headers: HeadersInit) =>
+    audit: (
+      id: string,
+      action: "approve" | "reject",
+      reason: string,
+      headers: HeadersInit,
+    ) =>
       request<Product>(`/products/${id}/audit`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ action, reason }),
       }),
-    status: (id: string, status: "approved" | "offline", headers: HeadersInit) =>
+    status: (
+      id: string,
+      status: "approved" | "offline",
+      headers: HeadersInit,
+    ) =>
       request<Product>(`/products/${id}/status`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
@@ -83,7 +104,8 @@ export const api = {
       }),
   },
   messages: {
-    byProduct: (id: string, headers: HeadersInit) => request<ProductMessage[]>(`/products/${id}/messages`, { headers }),
+    byProduct: (id: string, headers: HeadersInit) =>
+      request<ProductMessage[]>(`/products/${id}/messages`, { headers }),
     sendToProduct: (id: string, content: string, headers: HeadersInit) =>
       request<ProductMessage>(`/products/${id}/messages`, {
         method: "POST",
@@ -92,7 +114,8 @@ export const api = {
       }),
   },
   conversations: {
-    list: (headers: HeadersInit) => request<Conversation[]>("/conversations", { headers }),
+    list: (headers: HeadersInit) =>
+      request<Conversation[]>("/conversations", { headers }),
     detail: (userId: string, headers: HeadersInit) =>
       request<ProductMessage[]>(`/conversations/${userId}`, { headers }),
     send: (userId: string, content: string, headers: HeadersInit) =>
@@ -103,15 +126,22 @@ export const api = {
       }),
   },
   admin: {
-    users: (headers: HeadersInit) => request<User[]>("/admin/users", { headers }),
-    userDetail: (id: string, headers: HeadersInit) => request<User>(`/admin/users/${id}`, { headers }),
+    users: (headers: HeadersInit) =>
+      request<User[]>("/admin/users", { headers }),
+    userDetail: (id: string, headers: HeadersInit) =>
+      request<User>(`/admin/users/${id}`, { headers }),
     saveUser: (id: string, payload: Partial<User>, headers: HeadersInit) =>
       request<User>(`/admin/users/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify(payload),
       }),
-    reviewUser: (id: string, action: "approve" | "reject", note: string, headers: HeadersInit) =>
+    reviewUser: (
+      id: string,
+      action: "approve" | "reject",
+      note: string,
+      headers: HeadersInit,
+    ) =>
       request<User>(`/admin/users/${id}/review`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
@@ -124,6 +154,7 @@ export const api = {
     list: (headers: HeadersInit) => request<Order[]>("/orders", { headers }),
   },
   recommendations: {
-    list: (headers: HeadersInit) => request<Product[]>("/recommendations", { headers }),
+    list: (headers: HeadersInit) =>
+      request<Product[]>("/recommendations", { headers }),
   },
 };

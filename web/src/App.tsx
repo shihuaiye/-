@@ -1,11 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppSidebar } from "./components/AppSidebar";
 import { AuthView } from "./components/AuthView";
-import { AccountDetailModal, ChatModal, ProductDetailModal } from "./components/modals";
-import { AccountsTab, CartTab, FavoritesTab, ManageTab, MarketTab, MessagesTab, MineTab } from "./components/tabs";
+import { AccountDetailModal, ProductDetailModal } from "./components/modals";
+import {
+  AccountsTab,
+  CartTab,
+  ManageTab,
+  MarketTab,
+  MessagesTab,
+  PostProfileTab,
+  PostPublishTab,
+} from "./components/tabs";
 import { PRESET_LOCATIONS } from "./constants/locations";
 import { api } from "./services/api";
-import type { Category, Conversation, Order, Product, ProductMessage, PublishForm, Role, Status, Tab, User } from "./types";
+import type {
+  Category,
+  Conversation,
+  Order,
+  Product,
+  ProductMessage,
+  PublishForm,
+  Role,
+  Status,
+  Tab,
+  User,
+} from "./types";
 import { PAGE_SIZE, distanceKm, passwordStrength, toBase64 } from "./utils";
 
 export function App() {
@@ -27,7 +46,9 @@ export function App() {
 
   const [keyword, setKeyword] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<Category | "all">("all");
-  const [sortBy, setSortBy] = useState<"default" | "price-asc" | "price-desc" | "time">("default");
+  const [sortBy, setSortBy] = useState<
+    "default" | "distance" | "price-asc" | "price-desc" | "time"
+  >("distance");
   const [page, setPage] = useState(1);
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -41,9 +62,11 @@ export function App() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [myPurchases, setMyPurchases] = useState<Order[]>([]);
   const [mySales, setMySales] = useState<Order[]>([]);
-  const [historyTab, setHistoryTab] = useState<"sales" | "purchases">("sales");
   const [recommendations, setRecommendations] = useState<Product[]>([]);
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [userLocation, setUserLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [accountDetail, setAccountDetail] = useState<User | null>(null);
   const [accountForm, setAccountForm] = useState({
     username: "",
@@ -58,6 +81,7 @@ export function App() {
     username: "",
     password: "",
     role: "user" as Role,
+    school: "武汉大学",
   });
   const [publishForm, setPublishForm] = useState<PublishForm>({
     title: "",
@@ -65,6 +89,8 @@ export function App() {
     price: 0,
     category: "daily" as Category,
     images: [] as string[],
+    school: "武汉大学",
+    schoolDetail: "",
     campus: "",
     brand: "",
     model: "",
@@ -84,14 +110,19 @@ export function App() {
     if (!token) return;
     const json = await api.auth.me(authHeaders());
     if (!json.success) return;
-    setUser(json.data);
+    setUser(hydrateUser(json.data));
+  };
+
+  const hydrateUser = (user: User) => {
+    const school = localStorage.getItem(`sh-school-${user.username}`);
+    return school ? { ...user, school } : user;
   };
 
   const login = async () => {
     const json = await api.auth.login(loginForm);
     if (!json.success) return alert(json.message);
     setToken(json.data.token);
-    setUser(json.data.user);
+    setUser(hydrateUser(json.data.user));
     localStorage.setItem("sh-token", json.data.token);
     localStorage.setItem("sh-username", loginForm.username);
     localStorage.setItem("sh-password", loginForm.password);
@@ -99,12 +130,21 @@ export function App() {
 
   const register = async () => {
     const strength = passwordStrength(regForm.password);
-    if (!strength.pass) return alert("密码强度过弱，请至少满足8位并包含数字/字母组合");
+    if (!strength.pass)
+      return alert("密码强度过弱，请至少满足8位并包含数字/字母组合");
     const json = await api.auth.register(regForm);
     if (!json.success) return alert(json.message);
+    if (regForm.school) {
+      localStorage.setItem(`sh-school-${regForm.username}`, regForm.school);
+    }
     alert(json.message || "注册成功，请登录");
     setShowRegister(false);
-    setRegForm({ username: "", password: "", role: "user" });
+    setRegForm({
+      username: "",
+      password: "",
+      role: "user",
+      school: "武汉大学",
+    });
   };
 
   const loadAllForAdmin = async () => {
@@ -146,7 +186,11 @@ export function App() {
         ? `${content}\n[图片: ${imageData}]`
         : `[图片: ${imageData}]`
       : content;
-    const json = await api.messages.sendToProduct(detail.id, finalContent, authHeaders());
+    const json = await api.messages.sendToProduct(
+      detail.id,
+      finalContent,
+      authHeaders(),
+    );
     if (!json.success) return alert(json.message);
     setMessageInput("");
     setMessageImageFile(null);
@@ -163,7 +207,7 @@ export function App() {
       price: Number(publishForm.price),
       category: publishForm.category,
       images: publishForm.images,
-      campus: publishForm.campus,
+      campus: `${publishForm.school}${publishForm.schoolDetail ? ` · ${publishForm.schoolDetail}` : ""}`,
       brand: publishForm.brand || undefined,
       model: publishForm.model || undefined,
       memory: publishForm.memory || undefined,
@@ -179,6 +223,8 @@ export function App() {
       price: 0,
       category: "daily",
       images: [],
+      school: "武汉大学",
+      schoolDetail: "",
       campus: "",
       brand: "",
       model: "",
@@ -204,7 +250,9 @@ export function App() {
 
   const reviewAdminUser = async (id: string, action: "approve" | "reject") => {
     const note =
-      prompt(action === "approve" ? "审核备注（可选）" : "拒绝理由（建议填写）") || "";
+      prompt(
+        action === "approve" ? "审核备注（可选）" : "拒绝理由（建议填写）",
+      ) || "";
     const json = await api.admin.reviewUser(id, action, note, authHeaders());
     if (!json.success) return alert(json.message);
     await loadUsers();
@@ -232,7 +280,11 @@ export function App() {
 
   const saveAccountDetail = async () => {
     if (!accountDetail) return;
-    const json = await api.admin.saveUser(accountDetail.id, accountForm, authHeaders());
+    const json = await api.admin.saveUser(
+      accountDetail.id,
+      accountForm,
+      authHeaders(),
+    );
     if (!json.success) return alert(json.message);
     alert("账号信息已更新");
     await loadUsers();
@@ -254,7 +306,7 @@ export function App() {
         setUserLocation({ latitude, longitude });
         setPublishForm((prev) => ({ ...prev, latitude, longitude }));
       },
-      () => alert("定位失败，请检查定位权限")
+      () => alert("定位失败，请检查定位权限"),
     );
   };
 
@@ -274,13 +326,17 @@ export function App() {
   };
 
   const toggleCart = (id: string) => {
-    const next = cart.includes(id) ? cart.filter((x) => x !== id) : [...cart, id];
+    const next = cart.includes(id)
+      ? cart.filter((x) => x !== id)
+      : [...cart, id];
     setCart(next);
     localStorage.setItem(cartKey, JSON.stringify(next));
   };
 
   const applyManualLocation = () => {
-    const location = PRESET_LOCATIONS.find((loc) => loc.label === manualLocationLabel);
+    const location = PRESET_LOCATIONS.find(
+      (loc) => loc.label === manualLocationLabel,
+    );
     if (!location) return;
     setPublishForm((prev) => ({
       ...prev,
@@ -288,7 +344,10 @@ export function App() {
       latitude: location.latitude,
       longitude: location.longitude,
     }));
-    setUserLocation({ latitude: location.latitude, longitude: location.longitude });
+    setUserLocation({
+      latitude: location.latitude,
+      longitude: location.longitude,
+    });
   };
 
   const loadConversations = async () => {
@@ -328,7 +387,11 @@ export function App() {
       }
     }
 
-    const json = await api.conversations.send(chatTarget.userId, finalContent, authHeaders());
+    const json = await api.conversations.send(
+      chatTarget.userId,
+      finalContent,
+      authHeaders(),
+    );
     if (!json.success) return alert(json.message);
     setChatInput("");
     setChatImageFile(null);
@@ -387,11 +450,21 @@ export function App() {
   const markAsSold = async (product: Product) => {
     if (!confirm(`确认将"${product.title}"标记为已售出？`)) return;
     const buyerName =
-      prompt("请输入买家昵称（可留空，默认系统模拟成交）")?.trim() || "系统模拟";
-    const json = await api.products.soldBySeller(product.id, buyerName, authHeaders());
+      prompt("请输入买家昵称（可留空，默认系统模拟成交）")?.trim() ||
+      "系统模拟";
+    const json = await api.products.soldBySeller(
+      product.id,
+      buyerName,
+      authHeaders(),
+    );
     if (!json.success) return alert(json.message);
     alert("商品已标记为售出");
-    await Promise.all([loadMine(), loadMarket(), loadAllForAdmin(), loadOrders()]);
+    await Promise.all([
+      loadMine(),
+      loadMarket(),
+      loadAllForAdmin(),
+      loadOrders(),
+    ]);
   };
 
   const buyFromCart = async (product: Product) => {
@@ -405,7 +478,12 @@ export function App() {
     if (!json.success) return alert(json.message);
     alert("下单成功，交易已完成");
     toggleCart(product.id);
-    await Promise.all([loadMarket(), loadMine(), loadOrders(), loadAllForAdmin()]);
+    await Promise.all([
+      loadMarket(),
+      loadMine(),
+      loadOrders(),
+      loadAllForAdmin(),
+    ]);
   };
 
   const loadOrders = async () => {
@@ -438,19 +516,24 @@ export function App() {
     const byKeyword = marketProducts.filter((p) =>
       `${p.title}${p.description}${p.campus}`
         .toLowerCase()
-        .includes(keyword.toLowerCase())
+        .includes(keyword.toLowerCase()),
     );
-    let result = categoryFilter === "all" ? byKeyword : byKeyword.filter((p) => p.category === categoryFilter);
+    let result =
+      categoryFilter === "all"
+        ? byKeyword
+        : byKeyword.filter((p) => p.category === categoryFilter);
     if (sortBy === "price-asc") {
       result = [...result].sort((a, b) => a.price - b.price);
     } else if (sortBy === "price-desc") {
       result = [...result].sort((a, b) => b.price - a.price);
     } else if (sortBy === "time") {
-      result = [...result].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }
-    if (userLocation) {
       result = [...result].sort(
-        (a, b) => distanceKm(userLocation, a) - distanceKm(userLocation, b)
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+    } else if (sortBy === "distance" && userLocation) {
+      result = [...result].sort(
+        (a, b) => distanceKm(userLocation, a) - distanceKm(userLocation, b),
       );
     }
     return result;
@@ -462,7 +545,9 @@ export function App() {
   }, [filteredMarket, page]);
 
   const pageCount = Math.max(1, Math.ceil(filteredMarket.length / PAGE_SIZE));
-  const favoriteProducts = marketProducts.filter((p) => favorites.includes(p.id));
+  const favoriteProducts = marketProducts.filter((p) =>
+    favorites.includes(p.id),
+  );
   const cartProducts = marketProducts.filter((p) => cart.includes(p.id));
   const adminFilteredProducts =
     adminProductTab === "all"
@@ -515,7 +600,7 @@ export function App() {
           longitude: position.coords.longitude,
         });
       },
-      () => {}
+      () => {},
     );
   }, [token, user?.id, userLocation]);
 
@@ -577,138 +662,133 @@ export function App() {
       />
 
       <main className="main">
-        <header className="topbar">
-          <div>
-            当前用户：{user.username}（{user.role === "admin" ? "管理员" : "普通用户"}）
-          </div>
-          <button onClick={logout}>退出登录</button>
-        </header>
-
         {activeTab === "market" && (
-          <MarketTab
-            keyword={keyword}
-            setKeyword={setKeyword}
-            categoryFilter={categoryFilter}
-            setCategoryFilter={setCategoryFilter}
-            sortBy={sortBy}
-            setSortBy={setSortBy}
-            userLocation={userLocation}
-            pickCurrentLocation={pickCurrentLocation}
-            pagedMarket={pagedMarket}
-            favorites={favorites}
-            toggleFavorite={toggleFavorite}
-            loadDetail={loadDetail}
-            page={page}
-            pageCount={pageCount}
-            setPage={setPage}
-            recommendations={recommendations}
-            cart={cart}
-            toggleCart={toggleCart}
-          />
-        )}
-
-        {activeTab === "favorites" && (
-          <FavoritesTab
-            favoriteProducts={favoriteProducts}
-            loadDetail={loadDetail}
-            toggleFavorite={toggleFavorite}
-          />
+          <header className="page-header">
+            <div className="page-title">
+              商品广场
+              <span className="page-subtitle">珞珈优选</span>
+            </div>
+          </header>
         )}
 
         {activeTab === "cart" && (
-          <CartTab
-            cartProducts={cartProducts}
-            removeFromCart={toggleCart}
-            loadDetail={loadDetail}
-            buyNow={buyFromCart}
-          />
+          <header className="page-header">
+            <div className="page-title">收藏与购物车</div>
+          </header>
         )}
 
-        {activeTab === "mine" && (
-          <MineTab
-            publishForm={publishForm}
-            setPublishForm={setPublishForm}
-            onPublishImagesSelected={onPublishImagesSelected}
-            pickCurrentLocation={pickCurrentLocation}
-            publish={publish}
-            myProducts={myProducts}
-            markAsSold={markAsSold}
-            historyTab={historyTab}
-            setHistoryTab={setHistoryTab}
-            mySales={mySales}
-            myPurchases={myPurchases}
-            presetLocations={PRESET_LOCATIONS}
-            manualLocationLabel={manualLocationLabel}
-            setManualLocationLabel={setManualLocationLabel}
-            applyManualLocation={applyManualLocation}
-          />
+        {activeTab === "profile" && (
+          <header className="page-header">
+            <div className="page-title">个人中心</div>
+            <div className="page-actions">
+              <button onClick={logout}>退出登录</button>
+            </div>
+          </header>
         )}
 
-        {activeTab === "manage" && user.role === "admin" && (
-          <ManageTab
-            adminStats={adminStats}
-            adminProductTab={adminProductTab}
-            setAdminProductTab={setAdminProductTab}
-            allProducts={allProducts}
-            adminFilteredProducts={adminFilteredProducts}
-            audit={audit}
-            toggleStatus={toggleStatus}
-          />
+        {activeTab === "publish" && (
+          <header className="page-header">
+            <div className="page-title">发布闲置</div>
+          </header>
         )}
 
-        {activeTab === "accounts" && user.role === "admin" && (
-          <AccountsTab
-            allUsers={allUsers}
-            user={user}
-            loadAccountDetail={loadAccountDetail}
-            reviewAdminUser={reviewAdminUser}
-            deleteUser={deleteUser}
-          />
-        )}
+        <div
+          className={
+            activeTab === "messages" ? "content-no-pad" : "content-scroll"
+          }
+        >
+          {activeTab === "market" && (
+            <MarketTab
+              keyword={keyword}
+              setKeyword={setKeyword}
+              categoryFilter={categoryFilter}
+              setCategoryFilter={setCategoryFilter}
+              sortBy={sortBy}
+              setSortBy={setSortBy}
+              userLocation={userLocation}
+              pickCurrentLocation={pickCurrentLocation}
+              pagedMarket={pagedMarket}
+              favorites={favorites}
+              toggleFavorite={toggleFavorite}
+              loadDetail={loadDetail}
+              page={page}
+              pageCount={pageCount}
+              setPage={setPage}
+              recommendations={recommendations}
+              cart={cart}
+              toggleCart={toggleCart}
+            />
+          )}
 
-        <AccountDetailModal
-          accountDetail={accountDetail}
-          accountForm={accountForm}
-          setAccountForm={setAccountForm}
-          setAccountDetail={setAccountDetail}
-          saveAccountDetail={saveAccountDetail}
-        />
+          {activeTab === "cart" && (
+            <CartTab
+              favoriteProducts={favoriteProducts}
+              toggleFavorite={toggleFavorite}
+              loadDetail={loadDetail}
+              buyNow={buyFromCart}
+            />
+          )}
 
-        {activeTab === "messages" && (
-          <MessagesTab
-            conversations={conversations}
-            lastSeenMessageTime={lastSeenMessageTime}
-            openChat={openChat}
-          />
-        )}
+          {activeTab === "profile" && (
+            <PostProfileTab
+              user={user}
+              myProducts={myProducts}
+              markAsSold={markAsSold}
+              loadDetail={loadDetail}
+              mySales={mySales}
+              myPurchases={myPurchases}
+            />
+          )}
 
-        <ProductDetailModal
-          detail={detail}
-          setDetail={setDetail}
-          favorites={favorites}
-          toggleFavorite={toggleFavorite}
-          user={user}
-          contactSeller={contactSeller}
-          messages={messages}
-          setMessageImageFile={setMessageImageFile}
-          messageInput={messageInput}
-          setMessageInput={setMessageInput}
-          sendMessage={sendMessage}
-        />
+          {activeTab === "publish" && (
+            <PostPublishTab
+              publishForm={publishForm}
+              setPublishForm={setPublishForm}
+              onPublishImagesSelected={onPublishImagesSelected}
+              publish={publish}
+              presetLocations={PRESET_LOCATIONS}
+            />
+          )}
 
-        <ChatModal
-          chatTarget={chatTarget}
-          setChatTarget={setChatTarget}
-          relatedProduct={relatedProduct}
-          setRelatedProduct={setRelatedProduct}
-          chatMessages={chatMessages}
-          user={user}
-          chatInput={chatInput}
-          setChatInput={setChatInput}
-          setChatImageFile={setChatImageFile}
-          sendChatMessage={sendChatMessage}
-        />
+          {activeTab === "manage" && user.role === "admin" && (
+            <ManageTab
+              adminStats={adminStats}
+              adminProductTab={adminProductTab}
+              setAdminProductTab={setAdminProductTab}
+              allProducts={allProducts}
+              adminFilteredProducts={adminFilteredProducts}
+              audit={audit}
+              toggleStatus={toggleStatus}
+            />
+          )}
 
+          {activeTab === "accounts" && user.role === "admin" && (
+            <AccountsTab
+              allUsers={allUsers}
+              user={user}
+              loadAccountDetail={loadAccountDetail}
+              reviewAdminUser={reviewAdminUser}
+              deleteUser={deleteUser}
+            />
+          )}
+
+          {activeTab === "messages" && (
+            <MessagesTab
+              conversations={conversations}
+              lastSeenMessageTime={lastSeenMessageTime}
+              openChat={openChat}
+              chatTarget={chatTarget}
+              relatedProduct={relatedProduct}
+              chatMessages={chatMessages}
+              user={user}
+              chatInput={chatInput}
+              setChatInput={setChatInput}
+              setChatImageFile={setChatImageFile}
+              sendChatMessage={sendChatMessage}
+              buyNow={buyFromCart}
+            />
+          )}
+        </div>
       </main>
     </div>
   );

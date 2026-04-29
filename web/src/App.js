@@ -2,8 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { AppSidebar } from "./components/AppSidebar";
 import { AuthView } from "./components/AuthView";
-import { AccountDetailModal, ChatModal, ProductDetailModal } from "./components/modals";
-import { AccountsTab, CartTab, FavoritesTab, ManageTab, MarketTab, MessagesTab, MineTab } from "./components/tabs";
+import { AccountsTab, CartTab, ManageTab, MarketTab, MessagesTab, PostProfileTab, PostPublishTab, } from "./components/tabs";
 import { PRESET_LOCATIONS } from "./constants/locations";
 import { api } from "./services/api";
 import { PAGE_SIZE, distanceKm, passwordStrength, toBase64 } from "./utils";
@@ -25,7 +24,7 @@ export function App() {
     const [cart, setCart] = useState([]);
     const [keyword, setKeyword] = useState("");
     const [categoryFilter, setCategoryFilter] = useState("all");
-    const [sortBy, setSortBy] = useState("default");
+    const [sortBy, setSortBy] = useState("distance");
     const [page, setPage] = useState(1);
     const [conversations, setConversations] = useState([]);
     const [chatTarget, setChatTarget] = useState(null);
@@ -37,7 +36,6 @@ export function App() {
     const [orders, setOrders] = useState([]);
     const [myPurchases, setMyPurchases] = useState([]);
     const [mySales, setMySales] = useState([]);
-    const [historyTab, setHistoryTab] = useState("sales");
     const [recommendations, setRecommendations] = useState([]);
     const [userLocation, setUserLocation] = useState(null);
     const [accountDetail, setAccountDetail] = useState(null);
@@ -53,6 +51,7 @@ export function App() {
         username: "",
         password: "",
         role: "user",
+        school: "武汉大学",
     });
     const [publishForm, setPublishForm] = useState({
         title: "",
@@ -60,6 +59,8 @@ export function App() {
         price: 0,
         category: "daily",
         images: [],
+        school: "武汉大学",
+        schoolDetail: "",
         campus: "",
         brand: "",
         model: "",
@@ -78,14 +79,18 @@ export function App() {
         const json = await api.auth.me(authHeaders());
         if (!json.success)
             return;
-        setUser(json.data);
+        setUser(hydrateUser(json.data));
+    };
+    const hydrateUser = (user) => {
+        const school = localStorage.getItem(`sh-school-${user.username}`);
+        return school ? { ...user, school } : user;
     };
     const login = async () => {
         const json = await api.auth.login(loginForm);
         if (!json.success)
             return alert(json.message);
         setToken(json.data.token);
-        setUser(json.data.user);
+        setUser(hydrateUser(json.data.user));
         localStorage.setItem("sh-token", json.data.token);
         localStorage.setItem("sh-username", loginForm.username);
         localStorage.setItem("sh-password", loginForm.password);
@@ -97,9 +102,17 @@ export function App() {
         const json = await api.auth.register(regForm);
         if (!json.success)
             return alert(json.message);
+        if (regForm.school) {
+            localStorage.setItem(`sh-school-${regForm.username}`, regForm.school);
+        }
         alert(json.message || "注册成功，请登录");
         setShowRegister(false);
-        setRegForm({ username: "", password: "", role: "user" });
+        setRegForm({
+            username: "",
+            password: "",
+            role: "user",
+            school: "武汉大学",
+        });
     };
     const loadAllForAdmin = async () => {
         const json = await api.products.all(authHeaders());
@@ -161,7 +174,7 @@ export function App() {
             price: Number(publishForm.price),
             category: publishForm.category,
             images: publishForm.images,
-            campus: publishForm.campus,
+            campus: `${publishForm.school}${publishForm.schoolDetail ? ` · ${publishForm.schoolDetail}` : ""}`,
             brand: publishForm.brand || undefined,
             model: publishForm.model || undefined,
             memory: publishForm.memory || undefined,
@@ -178,6 +191,8 @@ export function App() {
             price: 0,
             category: "daily",
             images: [],
+            school: "武汉大学",
+            schoolDetail: "",
             campus: "",
             brand: "",
             model: "",
@@ -268,7 +283,9 @@ export function App() {
         localStorage.setItem(favoritesKey, JSON.stringify(next));
     };
     const toggleCart = (id) => {
-        const next = cart.includes(id) ? cart.filter((x) => x !== id) : [...cart, id];
+        const next = cart.includes(id)
+            ? cart.filter((x) => x !== id)
+            : [...cart, id];
         setCart(next);
         localStorage.setItem(cartKey, JSON.stringify(next));
     };
@@ -282,7 +299,10 @@ export function App() {
             latitude: location.latitude,
             longitude: location.longitude,
         }));
-        setUserLocation({ latitude: location.latitude, longitude: location.longitude });
+        setUserLocation({
+            latitude: location.latitude,
+            longitude: location.longitude,
+        });
     };
     const loadConversations = async () => {
         if (!token || !user)
@@ -380,12 +400,18 @@ export function App() {
     const markAsSold = async (product) => {
         if (!confirm(`确认将"${product.title}"标记为已售出？`))
             return;
-        const buyerName = prompt("请输入买家昵称（可留空，默认系统模拟成交）")?.trim() || "系统模拟";
+        const buyerName = prompt("请输入买家昵称（可留空，默认系统模拟成交）")?.trim() ||
+            "系统模拟";
         const json = await api.products.soldBySeller(product.id, buyerName, authHeaders());
         if (!json.success)
             return alert(json.message);
         alert("商品已标记为售出");
-        await Promise.all([loadMine(), loadMarket(), loadAllForAdmin(), loadOrders()]);
+        await Promise.all([
+            loadMine(),
+            loadMarket(),
+            loadAllForAdmin(),
+            loadOrders(),
+        ]);
     };
     const buyFromCart = async (product) => {
         if (!user)
@@ -401,7 +427,12 @@ export function App() {
             return alert(json.message);
         alert("下单成功，交易已完成");
         toggleCart(product.id);
-        await Promise.all([loadMarket(), loadMine(), loadOrders(), loadAllForAdmin()]);
+        await Promise.all([
+            loadMarket(),
+            loadMine(),
+            loadOrders(),
+            loadAllForAdmin(),
+        ]);
     };
     const loadOrders = async () => {
         if (!token || !user)
@@ -433,7 +464,9 @@ export function App() {
         const byKeyword = marketProducts.filter((p) => `${p.title}${p.description}${p.campus}`
             .toLowerCase()
             .includes(keyword.toLowerCase()));
-        let result = categoryFilter === "all" ? byKeyword : byKeyword.filter((p) => p.category === categoryFilter);
+        let result = categoryFilter === "all"
+            ? byKeyword
+            : byKeyword.filter((p) => p.category === categoryFilter);
         if (sortBy === "price-asc") {
             result = [...result].sort((a, b) => a.price - b.price);
         }
@@ -443,7 +476,7 @@ export function App() {
         else if (sortBy === "time") {
             result = [...result].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         }
-        if (userLocation) {
+        else if (sortBy === "distance" && userLocation) {
             result = [...result].sort((a, b) => distanceKm(userLocation, a) - distanceKm(userLocation, b));
         }
         return result;
@@ -533,5 +566,5 @@ export function App() {
                     setActiveTab("messages");
                     loadConversations();
                     markMessagesAsSeen();
-                } }), _jsxs("main", { className: "main", children: [_jsxs("header", { className: "topbar", children: [_jsxs("div", { children: ["\u5F53\u524D\u7528\u6237\uFF1A", user.username, "\uFF08", user.role === "admin" ? "管理员" : "普通用户", "\uFF09"] }), _jsx("button", { onClick: logout, children: "\u9000\u51FA\u767B\u5F55" })] }), activeTab === "market" && (_jsx(MarketTab, { keyword: keyword, setKeyword: setKeyword, categoryFilter: categoryFilter, setCategoryFilter: setCategoryFilter, sortBy: sortBy, setSortBy: setSortBy, userLocation: userLocation, pickCurrentLocation: pickCurrentLocation, pagedMarket: pagedMarket, favorites: favorites, toggleFavorite: toggleFavorite, loadDetail: loadDetail, page: page, pageCount: pageCount, setPage: setPage, recommendations: recommendations, cart: cart, toggleCart: toggleCart })), activeTab === "favorites" && (_jsx(FavoritesTab, { favoriteProducts: favoriteProducts, loadDetail: loadDetail, toggleFavorite: toggleFavorite })), activeTab === "cart" && (_jsx(CartTab, { cartProducts: cartProducts, removeFromCart: toggleCart, loadDetail: loadDetail, buyNow: buyFromCart })), activeTab === "mine" && (_jsx(MineTab, { publishForm: publishForm, setPublishForm: setPublishForm, onPublishImagesSelected: onPublishImagesSelected, pickCurrentLocation: pickCurrentLocation, publish: publish, myProducts: myProducts, markAsSold: markAsSold, historyTab: historyTab, setHistoryTab: setHistoryTab, mySales: mySales, myPurchases: myPurchases, presetLocations: PRESET_LOCATIONS, manualLocationLabel: manualLocationLabel, setManualLocationLabel: setManualLocationLabel, applyManualLocation: applyManualLocation })), activeTab === "manage" && user.role === "admin" && (_jsx(ManageTab, { adminStats: adminStats, adminProductTab: adminProductTab, setAdminProductTab: setAdminProductTab, allProducts: allProducts, adminFilteredProducts: adminFilteredProducts, audit: audit, toggleStatus: toggleStatus })), activeTab === "accounts" && user.role === "admin" && (_jsx(AccountsTab, { allUsers: allUsers, user: user, loadAccountDetail: loadAccountDetail, reviewAdminUser: reviewAdminUser, deleteUser: deleteUser })), _jsx(AccountDetailModal, { accountDetail: accountDetail, accountForm: accountForm, setAccountForm: setAccountForm, setAccountDetail: setAccountDetail, saveAccountDetail: saveAccountDetail }), activeTab === "messages" && (_jsx(MessagesTab, { conversations: conversations, lastSeenMessageTime: lastSeenMessageTime, openChat: openChat })), _jsx(ProductDetailModal, { detail: detail, setDetail: setDetail, favorites: favorites, toggleFavorite: toggleFavorite, user: user, contactSeller: contactSeller, messages: messages, setMessageImageFile: setMessageImageFile, messageInput: messageInput, setMessageInput: setMessageInput, sendMessage: sendMessage }), _jsx(ChatModal, { chatTarget: chatTarget, setChatTarget: setChatTarget, relatedProduct: relatedProduct, setRelatedProduct: setRelatedProduct, chatMessages: chatMessages, user: user, chatInput: chatInput, setChatInput: setChatInput, setChatImageFile: setChatImageFile, sendChatMessage: sendChatMessage })] })] }));
+                } }), _jsxs("main", { className: "main", children: [activeTab === "market" && (_jsx("header", { className: "page-header", children: _jsxs("div", { className: "page-title", children: ["\u5546\u54C1\u5E7F\u573A", _jsx("span", { className: "page-subtitle", children: "\u73DE\u73C8\u4F18\u9009" })] }) })), activeTab === "cart" && (_jsx("header", { className: "page-header", children: _jsx("div", { className: "page-title", children: "\u6536\u85CF\u4E0E\u8D2D\u7269\u8F66" }) })), activeTab === "profile" && (_jsxs("header", { className: "page-header", children: [_jsx("div", { className: "page-title", children: "\u4E2A\u4EBA\u4E2D\u5FC3" }), _jsx("div", { className: "page-actions", children: _jsx("button", { onClick: logout, children: "\u9000\u51FA\u767B\u5F55" }) })] })), activeTab === "publish" && (_jsx("header", { className: "page-header", children: _jsx("div", { className: "page-title", children: "\u53D1\u5E03\u95F2\u7F6E" }) })), _jsxs("div", { className: activeTab === "messages" ? "content-no-pad" : "content-scroll", children: [activeTab === "market" && (_jsx(MarketTab, { keyword: keyword, setKeyword: setKeyword, categoryFilter: categoryFilter, setCategoryFilter: setCategoryFilter, sortBy: sortBy, setSortBy: setSortBy, userLocation: userLocation, pickCurrentLocation: pickCurrentLocation, pagedMarket: pagedMarket, favorites: favorites, toggleFavorite: toggleFavorite, loadDetail: loadDetail, page: page, pageCount: pageCount, setPage: setPage, recommendations: recommendations, cart: cart, toggleCart: toggleCart })), activeTab === "cart" && (_jsx(CartTab, { favoriteProducts: favoriteProducts, toggleFavorite: toggleFavorite, loadDetail: loadDetail, buyNow: buyFromCart })), activeTab === "profile" && (_jsx(PostProfileTab, { user: user, myProducts: myProducts, markAsSold: markAsSold, loadDetail: loadDetail, mySales: mySales, myPurchases: myPurchases })), activeTab === "publish" && (_jsx(PostPublishTab, { publishForm: publishForm, setPublishForm: setPublishForm, onPublishImagesSelected: onPublishImagesSelected, publish: publish, presetLocations: PRESET_LOCATIONS })), activeTab === "manage" && user.role === "admin" && (_jsx(ManageTab, { adminStats: adminStats, adminProductTab: adminProductTab, setAdminProductTab: setAdminProductTab, allProducts: allProducts, adminFilteredProducts: adminFilteredProducts, audit: audit, toggleStatus: toggleStatus })), activeTab === "accounts" && user.role === "admin" && (_jsx(AccountsTab, { allUsers: allUsers, user: user, loadAccountDetail: loadAccountDetail, reviewAdminUser: reviewAdminUser, deleteUser: deleteUser })), activeTab === "messages" && (_jsx(MessagesTab, { conversations: conversations, lastSeenMessageTime: lastSeenMessageTime, openChat: openChat, chatTarget: chatTarget, relatedProduct: relatedProduct, chatMessages: chatMessages, user: user, chatInput: chatInput, setChatInput: setChatInput, setChatImageFile: setChatImageFile, sendChatMessage: sendChatMessage, buyNow: buyFromCart }))] })] })] }));
 }

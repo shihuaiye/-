@@ -1,7 +1,12 @@
 import type { Role } from "../types";
 
 type LoginForm = { username: string; password: string };
-type RegForm = { username: string; password: string; role: Role };
+type RegForm = {
+  username: string;
+  password: string;
+  role: Role;
+  school: string;
+};
 
 type Props = {
   loginForm: LoginForm;
@@ -29,8 +34,14 @@ export function AuthView({
   return (
     <div className="layout-auth">
       <div className="auth-card">
-        <h1>校园二手交易平台</h1>
-        <p>演示账号：admin / admin123，普通用户：user01 / user123</p>
+        <div className="auth-brand">
+          <span className="auth-brand-icon">🏫</span>
+          <div>
+            <h1>珞珈优选</h1>
+            <p>校园二手优选平台</p>
+          </div>
+        </div>
+
         <input
           placeholder="用户名"
           value={loginForm.username}
@@ -53,20 +64,12 @@ export function AuthView({
             setLoginForm({ ...loginForm, password: e.target.value })
           }
         />
-        <div className="row">
-          <button onClick={onLogin}>登录</button>
-          <button className="ghost" onClick={() => setShowRegister(true)}>
-            去注册
+        <div className="row auth-actions">
+          <button className="primary wide" onClick={onLogin}>
+            登录
           </button>
-          <button
-            className="ghost danger"
-            onClick={() => {
-              setLoginForm({ username: "", password: "" });
-              localStorage.removeItem("sh-username");
-              localStorage.removeItem("sh-password");
-            }}
-          >
-            清除
+          <button className="ghost wide" onClick={() => setShowRegister(true)}>
+            注册
           </button>
         </div>
       </div>
@@ -74,7 +77,12 @@ export function AuthView({
       {showRegister && (
         <div className="modal-mask" onClick={() => setShowRegister(false)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h3>注册账号</h3>
+            <div className="auth-brand auth-brand-small">
+              <span className="auth-brand-icon">🏫</span>
+              <div>
+                <h3>注册珞珈优选</h3>
+              </div>
+            </div>
             <input
               placeholder="用户名"
               value={regForm.username}
@@ -94,6 +102,20 @@ export function AuthView({
               密码强度：{strength.label}
             </p>
             <select
+              value={regForm.school}
+              onChange={(e) =>
+                setRegForm({ ...regForm, school: e.target.value })
+              }
+            >
+              <option value="武汉大学">武汉大学</option>
+              <option value="华中科技大学">华中科技大学</option>
+              <option value="武汉理工大学">武汉理工大学</option>
+              <option value="中南财经政法大学">中南财经政法大学</option>
+              <option value="华中师范大学">华中师范大学</option>
+              <option value="中国地质大学（武汉）">中国地质大学（武汉）</option>
+              <option value="中央民族大学">中央民族大学</option>
+            </select>
+            <select
               value={regForm.role}
               onChange={(e) =>
                 setRegForm({ ...regForm, role: e.target.value as Role })
@@ -102,9 +124,14 @@ export function AuthView({
               <option value="user">普通用户</option>
               <option value="admin">管理员（需审核）</option>
             </select>
-            <div className="row">
-              <button onClick={onRegister}>确认注册</button>
-              <button className="ghost" onClick={() => setShowRegister(false)}>
+            <div className="row auth-actions">
+              <button className="primary wide" onClick={onRegister}>
+                确认注册
+              </button>
+              <button
+                className="ghost wide"
+                onClick={() => setShowRegister(false)}
+              >
                 取消
               </button>
             </div>

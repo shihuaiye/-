@@ -66,5 +66,15 @@
     "toUsername": "user11",
     "content": "aa",
     "createdAt": "2026-04-26T09:52:22.293Z"
+  },
+  {
+    "id": "m-1777464549630-a4p4ed",
+    "productId": "p-1777197210015-h1ndqw",
+    "fromUserId": "u-admin",
+    "fromUsername": "admin",
+    "toUserId": "u-admin",
+    "toUsername": "admin",
+    "content": "hello",
+    "createdAt": "2026-04-29T12:09:09.630Z"
   }
 ]

@@ -45,11 +45,11 @@
       "https://images.unsplash.com/photo-1534073828943-f801091bb18c?auto=format&fit=crop&w=900&q=80"
     ],
     "campus": "东校区",
-    "status": "offline",
+    "status": "approved",
     "sellerId": "u-demo-user",
     "sellerName": "user01",
     "createdAt": "2026-04-26T04:33:30.590Z",
-    "updatedAt": "2026-04-26T15:02:59.822Z"
+    "updatedAt": "2026-04-29T13:27:32.944Z"
   },
   {
     "id": "p-1777178769869-j2bd4b",
@@ -131,10 +131,10 @@
     "campus": "西安交通大学",
     "latitude": 34.2467,
     "longitude": 108.9985,
-    "status": "pending",
+    "status": "approved",
     "sellerId": "u-1777184382178-n8t4mt",
     "sellerName": "user2",
     "createdAt": "2026-04-26T15:18:21.117Z",
-    "updatedAt": "2026-04-26T15:18:21.117Z"
+    "updatedAt": "2026-04-29T13:32:10.168Z"
   }
 ]

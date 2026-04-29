@@ -1,7 +1,15 @@
 export type Role = "admin" | "user";
 export type Status = "pending" | "approved" | "rejected" | "offline" | "sold";
 export type Category = "digital" | "book" | "daily" | "ticket" | "other";
-export type Tab = "market" | "favorites" | "cart" | "messages" | "mine" | "manage" | "accounts";
+// 页面入口：普通用户按 5 个静态页面拆分（商品/收藏购物车/消息/个人中心/发布）
+export type Tab =
+  | "market"
+  | "cart"
+  | "messages"
+  | "profile"
+  | "publish"
+  | "manage"
+  | "accounts";
 
 export type User = {
   id: string;
@@ -10,6 +18,7 @@ export type User = {
   password?: string;
   status?: "active" | "pending_review" | "rejected";
   reviewNote?: string;
+  school?: string;
 };
 
 export type Product = {
@@ -71,6 +80,8 @@ export type PublishForm = {
   price: number;
   category: Category;
   images: string[];
+  school: string;
+  schoolDetail: string;
   campus: string;
   brand: string;
   model: string;
