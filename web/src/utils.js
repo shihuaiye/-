@@ -1,4 +1,4 @@
-export const PAGE_SIZE = 4;
+export const PAGE_SIZE = 12;
 export const passwordStrength = (pwd) => {
     let score = 0;
     if (pwd.length >= 8)
@@ -15,9 +15,35 @@ export const passwordStrength = (pwd) => {
         return { label: "中", color: "#f59e0b", pass: true };
     return { label: "强", color: "#16a34a", pass: true };
 };
+const MAX_IMAGE_WIDTH = 800;
+const MAX_IMAGE_HEIGHT = 800;
+const IMAGE_QUALITY = 0.7;
 export const toBase64 = (file) => new Promise((resolve, reject) => {
+    const img = new Image();
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onload = (e) => {
+        img.src = String(e.target?.result || "");
+    };
+    img.onload = () => {
+        let { width, height } = img;
+        if (width > MAX_IMAGE_WIDTH || height > MAX_IMAGE_HEIGHT) {
+            const ratio = Math.min(MAX_IMAGE_WIDTH / width, MAX_IMAGE_HEIGHT / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+            reject(new Error("无法创建画布"));
+            return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const base64 = canvas.toDataURL("image/jpeg", IMAGE_QUALITY);
+        resolve(base64);
+    };
+    img.onerror = () => reject(new Error("图片加载失败"));
     reader.onerror = () => reject(new Error("读取图片失败"));
     reader.readAsDataURL(file);
 });

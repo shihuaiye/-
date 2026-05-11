@@ -198,41 +198,61 @@ export function App() {
   };
 
   const publish = async () => {
+    console.log("publish called", { publishForm });
     if (!publishForm.images.length) {
-      return alert("请至少选择一张商品图片");
+      alert("请至少选择一张商品图片");
+      return;
     }
-    const payload = {
-      title: publishForm.title,
-      description: publishForm.description,
-      price: Number(publishForm.price),
-      category: publishForm.category,
-      images: publishForm.images,
-      campus: `${publishForm.school}${publishForm.schoolDetail ? ` · ${publishForm.schoolDetail}` : ""}`,
-      brand: publishForm.brand || undefined,
-      model: publishForm.model || undefined,
-      memory: publishForm.memory || undefined,
-      latitude: publishForm.latitude,
-      longitude: publishForm.longitude,
-    };
-    const json = await api.products.create(payload, authHeaders());
-    if (!json.success) return alert(json.message);
-    alert("发布成功，等待审核");
-    setPublishForm({
-      title: "",
-      description: "",
-      price: 0,
-      category: "daily",
-      images: [],
-      school: "武汉大学",
-      schoolDetail: "",
-      campus: "",
-      brand: "",
-      model: "",
-      memory: "",
-      latitude: undefined,
-      longitude: undefined,
-    });
-    await Promise.all([loadMine(), loadMarket(), loadAllForAdmin()]);
+    if (!publishForm.title.trim()) {
+      alert("请填写商品名称");
+      return;
+    }
+    if (!publishForm.description.trim()) {
+      alert("请填写商品描述");
+      return;
+    }
+    try {
+      const payload = {
+        title: publishForm.title,
+        description: publishForm.description,
+        price: Number(publishForm.price),
+        category: publishForm.category,
+        images: publishForm.images,
+        campus: `${publishForm.school}${publishForm.schoolDetail ? ` · ${publishForm.schoolDetail}` : ""}`,
+        brand: publishForm.brand || undefined,
+        model: publishForm.model || undefined,
+        memory: publishForm.memory || undefined,
+        latitude: publishForm.latitude,
+        longitude: publishForm.longitude,
+      };
+      console.log("sending payload", payload);
+      const json = await api.products.create(payload, authHeaders());
+      console.log("response", json);
+      if (!json.success) {
+        alert(json.message || "发布失败");
+        return;
+      }
+      alert("发布成功，等待审核");
+      setPublishForm({
+        title: "",
+        description: "",
+        price: 0,
+        category: "daily",
+        images: [],
+        school: "武汉大学",
+        schoolDetail: "",
+        campus: "",
+        brand: "",
+        model: "",
+        memory: "",
+        latitude: undefined,
+        longitude: undefined,
+      });
+      await Promise.all([loadMine(), loadMarket(), loadAllForAdmin()]);
+    } catch (error) {
+      console.error("publish error", error);
+      alert("发布失败，请检查网络连接");
+    }
   };
 
   const audit = async (id: string, action: "approve" | "reject") => {
@@ -600,7 +620,7 @@ export function App() {
           longitude: position.coords.longitude,
         });
       },
-      () => {},
+      () => { },
     );
   }, [token, user?.id, userLocation]);
 
@@ -790,6 +810,28 @@ export function App() {
           )}
         </div>
       </main>
+
+      <ProductDetailModal
+        detail={detail}
+        setDetail={setDetail}
+        favorites={favorites}
+        toggleFavorite={toggleFavorite}
+        user={user}
+        contactSeller={contactSeller}
+        messages={messages}
+        setMessageImageFile={setMessageImageFile}
+        messageInput={messageInput}
+        setMessageInput={setMessageInput}
+        sendMessage={sendMessage}
+      />
+
+      <AccountDetailModal
+        accountDetail={accountDetail}
+        accountForm={accountForm}
+        setAccountForm={setAccountForm}
+        setAccountDetail={setAccountDetail}
+        saveAccountDetail={saveAccountDetail}
+      />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import EmojiPicker from "emoji-picker-react";
+import EmojiPicker, { Theme } from "emoji-picker-react";
 import type {
   Category,
   Conversation,
@@ -56,85 +56,87 @@ export function MarketTab(props: {
     toggleCart,
   } = props;
 
+  const categoryLabels: Record<Category | "all", string> = {
+    all: "全部",
+    digital: "数码",
+    book: "书籍",
+    daily: "日用",
+    ticket: "票券",
+    other: "其他",
+  };
+
   return (
     <>
-      {/* 宣传语部分 */}
-      <section className="hero-section">
-        <div className="hero-content">
+      <section className="market-hero">
+        <div className="market-hero-content">
           <h2>珞珈优选</h2>
           <p>校园二手交易平台，让闲置物品焕发新生</p>
-          <div className="hero-features">
-            <div className="feature-item">
-              <span className="feature-icon">🔍</span>
-              <span>海量商品</span>
-            </div>
-            <div className="feature-item">
-              <span className="feature-icon">💰</span>
-              <span>物美价廉</span>
-            </div>
-            <div className="feature-item">
-              <span className="feature-icon">🚀</span>
-              <span>快速交易</span>
-            </div>
-          </div>
-        </div>
-        <div className="hero-image">
-          <img
-            src="https://via.placeholder.com/400x300/FF5F6D/FFFFFF?text=珞珈优选"
-            alt="珞珈优选"
-          />
         </div>
       </section>
 
-      <section className="card">
-        <div className="market-actions">
-          <div>
-            <h3>商品广场</h3>
-            <p className="muted">按关键词、分类或距离筛选你感兴趣的商品</p>
-          </div>
+      <section className="market-filter-section">
+        <div className="filter-bar">
           <div className="search-row">
-            <div className="search-box">
+            <div className="search-input-wrapper">
               <span className="search-icon">🔍</span>
               <input
-                className="search"
-                placeholder="搜索感兴趣的商品..."
+                className="search-input"
+                placeholder="搜索商品名称、描述..."
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") setPage(() => 1);
+                }}
               />
-              <button
-                type="button"
-                className="search-btn"
-                onClick={() => setPage(() => 1)}
-              >
-                搜索
-              </button>
+              {keyword && (
+                <button
+                  className="search-clear"
+                  onClick={() => {
+                    setKeyword("");
+                    setPage(() => 1);
+                  }}
+                >
+                  ✕
+                </button>
+              )}
             </div>
-            <div className="filter-group">
+            <button
+              className="search-submit-btn"
+              onClick={() => setPage(() => 1)}
+            >
+              搜索
+            </button>
+          </div>
+
+          <div className="filter-row">
+            <div className="category-chips">
+              {(["all", "digital", "book", "daily", "ticket", "other"] as const).map(
+                (cat) => (
+                  <button
+                    key={cat}
+                    className={`category-chip ${categoryFilter === cat ? "active" : ""}`}
+                    onClick={() => {
+                      setCategoryFilter(cat);
+                      setPage(() => 1);
+                    }}
+                  >
+                    {categoryLabels[cat]}
+                  </button>
+                ),
+              )}
+            </div>
+            <div className="filter-actions">
               <select
-                className="category"
-                value={categoryFilter}
-                onChange={(e) =>
-                  setCategoryFilter(e.target.value as Category | "all")
-                }
-              >
-                <option value="all">全部分类</option>
-                <option value="digital">数码</option>
-                <option value="book">书籍</option>
-                <option value="daily">日用</option>
-                <option value="ticket">票券</option>
-                <option value="other">其他</option>
-              </select>
-              <select
-                className="sort"
+                className="sort-select"
                 value={sortBy}
                 onChange={(e) =>
                   setSortBy(
                     e.target.value as
-                      | "default"
-                      | "distance"
-                      | "price-desc"
-                      | "price-asc"
-                      | "time",
+                    | "default"
+                    | "distance"
+                    | "price-desc"
+                    | "price-asc"
+                    | "time",
                   )
                 }
               >
@@ -143,88 +145,111 @@ export function MarketTab(props: {
                 <option value="price-desc">价格由高到低</option>
                 <option value="price-asc">价格由低到高</option>
               </select>
-              <button className="small ghost" onClick={pickCurrentLocation}>
-                {userLocation ? "已定位" : "获取定位"}
+              <button className="location-btn" onClick={pickCurrentLocation}>
+                📍 {userLocation ? "已定位" : "定位"}
               </button>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="grid market-grid">
-        {pagedMarket.map((p) => (
-          <article key={p.id} className="product-card product-card-horizontal">
-            <div className="product-media">
-              <img src={p.images?.[0]} alt={p.title} className="thumb" />
-            </div>
-            <div className="product-body">
-              <div className="product-title-row">
-                <h4>{p.title}</h4>
+      {pagedMarket.length === 0 ? (
+        <section className="empty-state">
+          <div className="empty-icon">📦</div>
+          <h4>暂无商品</h4>
+          <p>没有找到符合条件的商品，换个关键词试试吧</p>
+        </section>
+      ) : (
+        <section className="product-grid">
+          {pagedMarket.map((p) => (
+            <article
+              key={p.id}
+              className="product-card-new"
+              onClick={() => loadDetail(p.id)}
+            >
+              <div className="product-image-wrapper">
+                <img src={p.images?.[0]} alt={p.title} className="product-image" />
                 <button
-                  className={
-                    favorites.includes(p.id) ? "small fav active" : "small fav"
-                  }
-                  onClick={() => toggleFavorite(p.id)}
+                  className={`favorite-btn ${favorites.includes(p.id) ? "active" : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleFavorite(p.id);
+                  }}
                 >
-                  {favorites.includes(p.id) ? "已收藏" : "收藏"}
+                  {favorites.includes(p.id) ? "❤️" : "🤍"}
                 </button>
               </div>
-              <p className="muted product-description">
-                {p.description.slice(0, 100)}...
-              </p>
-              <div className="product-meta-row">
-                <strong>¥{p.price}</strong>
-                <span>{p.campus}</span>
-              </div>
-              <div className="meta">
-                发布时间：{new Date(p.createdAt).toLocaleDateString("zh-CN")}
-              </div>
-              {userLocation && (
-                <div className="meta">
-                  距离：
-                  {Number.isFinite(distanceKm(userLocation, p))
-                    ? `${distanceKm(userLocation, p).toFixed(2)} km`
-                    : "未知"}
+              <div className="product-info">
+                <h4 className="product-title">{p.title}</h4>
+                <p className="product-desc">{p.description.slice(0, 60)}...</p>
+                <div className="product-price-row">
+                  <span className="product-price">¥{p.price}</span>
+                  <span className="product-campus">{p.campus}</span>
                 </div>
-              )}
-              <div className="meta">卖家：{p.sellerName}</div>
-              <div className="product-actions-row">
-                <button className="small" onClick={() => loadDetail(p.id)}>
-                  详情
-                </button>
-                <button
-                  className={
-                    favorites.includes(p.id) ? "small fav active" : "small fav"
-                  }
-                  onClick={() => toggleFavorite(p.id)}
-                >
-                  {favorites.includes(p.id) ? "已收藏" : "收藏"}
-                </button>
+                <div className="product-footer">
+                  <span className="product-time">
+                    {new Date(p.createdAt).toLocaleDateString("zh-CN")}
+                  </span>
+                  {userLocation && (
+                    <span className="product-distance">
+                      {Number.isFinite(distanceKm(userLocation, p))
+                        ? `${distanceKm(userLocation, p).toFixed(1)}km`
+                        : ""}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          </article>
-        ))}
-      </section>
+            </article>
+          ))}
+        </section>
+      )}
 
-      <section className="card pagination">
-        <button
-          className="ghost"
-          disabled={page <= 1}
-          onClick={() => setPage((x) => Math.max(1, x - 1))}
-        >
-          上一页
-        </button>
-        <span>
-          第 {page} / {pageCount} 页
-        </span>
-        <button
-          className="ghost"
-          disabled={page >= pageCount}
-          onClick={() => setPage((x) => Math.min(pageCount, x + 1))}
-        >
-          下一页
-        </button>
-      </section>
+      {pageCount > 1 && (
+        <section className="pagination-container">
+          <div className="pagination-info">
+            共 {pageCount} 页
+          </div>
+          <div className="pagination-controls">
+            <button
+              className="page-nav-btn"
+              disabled={page <= 1}
+              onClick={() => setPage((x) => Math.max(1, x - 1))}
+            >
+              上一页
+            </button>
+            <div className="page-numbers">
+              {Array.from({ length: Math.min(5, pageCount) }, (_, i) => {
+                let pageNum: number;
+                if (pageCount <= 5) {
+                  pageNum = i + 1;
+                } else if (page <= 3) {
+                  pageNum = i + 1;
+                } else if (page >= pageCount - 2) {
+                  pageNum = pageCount - 4 + i;
+                } else {
+                  pageNum = page - 2 + i;
+                }
+                return (
+                  <button
+                    key={pageNum}
+                    className={`page-num-btn ${page === pageNum ? "active" : ""}`}
+                    onClick={() => setPage(() => pageNum)}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              className="page-nav-btn"
+              disabled={page >= pageCount}
+              onClick={() => setPage((x) => Math.min(pageCount, x + 1))}
+            >
+              下一页
+            </button>
+          </div>
+        </section>
+      )}
     </>
   );
 }
@@ -236,30 +261,59 @@ export function FavoritesTab(props: {
 }) {
   const { favoriteProducts, loadDetail, toggleFavorite } = props;
   return (
-    <section className="card">
-      <h3>我的收藏</h3>
+    <section className="favorites-section">
+      <div className="bubble bubble-1" />
+      <div className="bubble bubble-2" />
+      <div className="bubble bubble-3" />
+      <div className="bubble bubble-4" />
+      <div className="bubble bubble-5" />
+
+      <div className="favorites-header">
+        <h3>我的收藏</h3>
+        <p>你收藏的心仪好物都在这里</p>
+      </div>
+
       {favoriteProducts.length === 0 ? (
-        <p className="muted">暂无收藏商品，去商品展示页看看吧。</p>
+        <div className="favorites-empty">
+          <div className="favorites-empty-icon">💝</div>
+          <h4>暂无收藏</h4>
+          <p>去商品广场发现你喜欢的宝贝吧</p>
+        </div>
       ) : (
-        <div className="grid">
+        <div className="favorites-grid">
           {favoriteProducts.map((p) => (
-            <article key={p.id} className="product-card">
-              <img src={p.images?.[0]} alt={p.title} className="thumb" />
-              <h4>{p.title}</h4>
-              <div className="row">
-                <strong>¥{p.price}</strong>
-                <span>{p.campus}</span>
-              </div>
-              <div className="row">
-                <button className="small" onClick={() => loadDetail(p.id)}>
-                  查看详情
-                </button>
+            <article key={p.id} className="favorite-card">
+              <div className="favorite-image-wrapper">
+                <img src={p.images?.[0]} alt={p.title} className="favorite-image" />
+                <span className="favorite-badge">已收藏</span>
                 <button
-                  className="small ghost"
+                  className="favorite-remove-btn"
                   onClick={() => toggleFavorite(p.id)}
+                  title="取消收藏"
                 >
-                  取消收藏
+                  ✕
                 </button>
+              </div>
+              <div className="favorite-info">
+                <h4 className="favorite-title">{p.title}</h4>
+                <div className="favorite-meta">
+                  <span className="favorite-price">¥{p.price}</span>
+                  <span className="favorite-campus">{p.campus}</span>
+                </div>
+                <div className="favorite-actions">
+                  <button
+                    className="favorite-detail-btn"
+                    onClick={() => loadDetail(p.id)}
+                  >
+                    查看详情
+                  </button>
+                  <button
+                    className="favorite-unfav-btn"
+                    onClick={() => toggleFavorite(p.id)}
+                  >
+                    取消收藏
+                  </button>
+                </div>
               </div>
             </article>
           ))}
@@ -1255,7 +1309,7 @@ export function MessagesTab(props: {
   chatMessages: ProductMessage[];
   user: User;
   chatInput: string;
-  setChatInput: (value: string) => void;
+  setChatInput: (value: string | ((prev: string) => string)) => void;
   setChatImageFile: (value: File | null) => void;
   sendChatMessage: () => void;
   buyNow: (product: Product) => void;
@@ -1452,7 +1506,7 @@ export function MessagesTab(props: {
                       setChatInput((prev) => prev + emojiData.emoji);
                       setShowEmojiPicker(false);
                     }}
-                    theme="light"
+                    theme={Theme.AUTO}
                     skinTonesDisabled
                     searchDisabled
                     previewConfig={{ showPreview: false }}

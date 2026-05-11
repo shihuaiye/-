@@ -1,12 +1,11 @@
-import { readUsers } from "./db.js";
+import { findUserById } from "./db.js";
 export const auth = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith("Bearer ")) {
         return res.status(401).json({ success: false, message: "未登录" });
     }
     const token = authHeader.replace("Bearer ", "");
-    const users = await readUsers();
-    const user = users.find((u) => u.id === token);
+    const user = await findUserById(token);
     if (!user) {
         return res.status(401).json({ success: false, message: "登录状态无效" });
     }

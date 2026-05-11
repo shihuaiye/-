@@ -4,7 +4,7 @@ import { router } from "./routes.js";
 import { initDb } from "./db.js";
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 app.use("/api", router);
 const basePort = 3100;
 const startServer = (port) => {

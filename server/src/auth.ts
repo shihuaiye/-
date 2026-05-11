@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import { readUsers } from "./db.js";
+import { findUserById } from "./db.js";
 
 export interface AuthedRequest extends Request {
   userId?: string;
@@ -16,8 +16,7 @@ export const auth = async (
     return res.status(401).json({ success: false, message: "未登录" });
   }
   const token = authHeader.replace("Bearer ", "");
-  const users = await readUsers();
-  const user = users.find((u) => u.id === token);
+  const user = await findUserById(token);
   if (!user) {
     return res.status(401).json({ success: false, message: "登录状态无效" });
   }

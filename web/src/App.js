@@ -2,6 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { AppSidebar } from "./components/AppSidebar";
 import { AuthView } from "./components/AuthView";
+import { AccountDetailModal, ProductDetailModal } from "./components/modals";
 import { AccountsTab, CartTab, ManageTab, MarketTab, MessagesTab, PostProfileTab, PostPublishTab, } from "./components/tabs";
 import { PRESET_LOCATIONS } from "./constants/locations";
 import { api } from "./services/api";
@@ -165,42 +166,62 @@ export function App() {
         await loadDetail(detail.id);
     };
     const publish = async () => {
+        console.log("publish called", { publishForm });
         if (!publishForm.images.length) {
-            return alert("请至少选择一张商品图片");
+            alert("请至少选择一张商品图片");
+            return;
         }
-        const payload = {
-            title: publishForm.title,
-            description: publishForm.description,
-            price: Number(publishForm.price),
-            category: publishForm.category,
-            images: publishForm.images,
-            campus: `${publishForm.school}${publishForm.schoolDetail ? ` · ${publishForm.schoolDetail}` : ""}`,
-            brand: publishForm.brand || undefined,
-            model: publishForm.model || undefined,
-            memory: publishForm.memory || undefined,
-            latitude: publishForm.latitude,
-            longitude: publishForm.longitude,
-        };
-        const json = await api.products.create(payload, authHeaders());
-        if (!json.success)
-            return alert(json.message);
-        alert("发布成功，等待审核");
-        setPublishForm({
-            title: "",
-            description: "",
-            price: 0,
-            category: "daily",
-            images: [],
-            school: "武汉大学",
-            schoolDetail: "",
-            campus: "",
-            brand: "",
-            model: "",
-            memory: "",
-            latitude: undefined,
-            longitude: undefined,
-        });
-        await Promise.all([loadMine(), loadMarket(), loadAllForAdmin()]);
+        if (!publishForm.title.trim()) {
+            alert("请填写商品名称");
+            return;
+        }
+        if (!publishForm.description.trim()) {
+            alert("请填写商品描述");
+            return;
+        }
+        try {
+            const payload = {
+                title: publishForm.title,
+                description: publishForm.description,
+                price: Number(publishForm.price),
+                category: publishForm.category,
+                images: publishForm.images,
+                campus: `${publishForm.school}${publishForm.schoolDetail ? ` · ${publishForm.schoolDetail}` : ""}`,
+                brand: publishForm.brand || undefined,
+                model: publishForm.model || undefined,
+                memory: publishForm.memory || undefined,
+                latitude: publishForm.latitude,
+                longitude: publishForm.longitude,
+            };
+            console.log("sending payload", payload);
+            const json = await api.products.create(payload, authHeaders());
+            console.log("response", json);
+            if (!json.success) {
+                alert(json.message || "发布失败");
+                return;
+            }
+            alert("发布成功，等待审核");
+            setPublishForm({
+                title: "",
+                description: "",
+                price: 0,
+                category: "daily",
+                images: [],
+                school: "武汉大学",
+                schoolDetail: "",
+                campus: "",
+                brand: "",
+                model: "",
+                memory: "",
+                latitude: undefined,
+                longitude: undefined,
+            });
+            await Promise.all([loadMine(), loadMarket(), loadAllForAdmin()]);
+        }
+        catch (error) {
+            console.error("publish error", error);
+            alert("发布失败，请检查网络连接");
+        }
     };
     const audit = async (id, action) => {
         const reason = action === "reject" ? prompt("请输入拒绝理由") || "" : "";
@@ -566,5 +587,5 @@ export function App() {
                     setActiveTab("messages");
                     loadConversations();
                     markMessagesAsSeen();
-                } }), _jsxs("main", { className: "main", children: [activeTab === "market" && (_jsx("header", { className: "page-header", children: _jsxs("div", { className: "page-title", children: ["\u5546\u54C1\u5E7F\u573A", _jsx("span", { className: "page-subtitle", children: "\u73DE\u73C8\u4F18\u9009" })] }) })), activeTab === "cart" && (_jsx("header", { className: "page-header", children: _jsx("div", { className: "page-title", children: "\u6536\u85CF\u4E0E\u8D2D\u7269\u8F66" }) })), activeTab === "profile" && (_jsxs("header", { className: "page-header", children: [_jsx("div", { className: "page-title", children: "\u4E2A\u4EBA\u4E2D\u5FC3" }), _jsx("div", { className: "page-actions", children: _jsx("button", { onClick: logout, children: "\u9000\u51FA\u767B\u5F55" }) })] })), activeTab === "publish" && (_jsx("header", { className: "page-header", children: _jsx("div", { className: "page-title", children: "\u53D1\u5E03\u95F2\u7F6E" }) })), _jsxs("div", { className: activeTab === "messages" ? "content-no-pad" : "content-scroll", children: [activeTab === "market" && (_jsx(MarketTab, { keyword: keyword, setKeyword: setKeyword, categoryFilter: categoryFilter, setCategoryFilter: setCategoryFilter, sortBy: sortBy, setSortBy: setSortBy, userLocation: userLocation, pickCurrentLocation: pickCurrentLocation, pagedMarket: pagedMarket, favorites: favorites, toggleFavorite: toggleFavorite, loadDetail: loadDetail, page: page, pageCount: pageCount, setPage: setPage, recommendations: recommendations, cart: cart, toggleCart: toggleCart })), activeTab === "cart" && (_jsx(CartTab, { favoriteProducts: favoriteProducts, toggleFavorite: toggleFavorite, loadDetail: loadDetail, buyNow: buyFromCart })), activeTab === "profile" && (_jsx(PostProfileTab, { user: user, myProducts: myProducts, markAsSold: markAsSold, loadDetail: loadDetail, mySales: mySales, myPurchases: myPurchases })), activeTab === "publish" && (_jsx(PostPublishTab, { publishForm: publishForm, setPublishForm: setPublishForm, onPublishImagesSelected: onPublishImagesSelected, publish: publish, presetLocations: PRESET_LOCATIONS })), activeTab === "manage" && user.role === "admin" && (_jsx(ManageTab, { adminStats: adminStats, adminProductTab: adminProductTab, setAdminProductTab: setAdminProductTab, allProducts: allProducts, adminFilteredProducts: adminFilteredProducts, audit: audit, toggleStatus: toggleStatus })), activeTab === "accounts" && user.role === "admin" && (_jsx(AccountsTab, { allUsers: allUsers, user: user, loadAccountDetail: loadAccountDetail, reviewAdminUser: reviewAdminUser, deleteUser: deleteUser })), activeTab === "messages" && (_jsx(MessagesTab, { conversations: conversations, lastSeenMessageTime: lastSeenMessageTime, openChat: openChat, chatTarget: chatTarget, relatedProduct: relatedProduct, chatMessages: chatMessages, user: user, chatInput: chatInput, setChatInput: setChatInput, setChatImageFile: setChatImageFile, sendChatMessage: sendChatMessage, buyNow: buyFromCart }))] })] })] }));
+                } }), _jsxs("main", { className: "main", children: [activeTab === "market" && (_jsx("header", { className: "page-header", children: _jsxs("div", { className: "page-title", children: ["\u5546\u54C1\u5E7F\u573A", _jsx("span", { className: "page-subtitle", children: "\u73DE\u73C8\u4F18\u9009" })] }) })), activeTab === "cart" && (_jsx("header", { className: "page-header", children: _jsx("div", { className: "page-title", children: "\u6536\u85CF\u4E0E\u8D2D\u7269\u8F66" }) })), activeTab === "profile" && (_jsxs("header", { className: "page-header", children: [_jsx("div", { className: "page-title", children: "\u4E2A\u4EBA\u4E2D\u5FC3" }), _jsx("div", { className: "page-actions", children: _jsx("button", { onClick: logout, children: "\u9000\u51FA\u767B\u5F55" }) })] })), activeTab === "publish" && (_jsx("header", { className: "page-header", children: _jsx("div", { className: "page-title", children: "\u53D1\u5E03\u95F2\u7F6E" }) })), _jsxs("div", { className: activeTab === "messages" ? "content-no-pad" : "content-scroll", children: [activeTab === "market" && (_jsx(MarketTab, { keyword: keyword, setKeyword: setKeyword, categoryFilter: categoryFilter, setCategoryFilter: setCategoryFilter, sortBy: sortBy, setSortBy: setSortBy, userLocation: userLocation, pickCurrentLocation: pickCurrentLocation, pagedMarket: pagedMarket, favorites: favorites, toggleFavorite: toggleFavorite, loadDetail: loadDetail, page: page, pageCount: pageCount, setPage: setPage, recommendations: recommendations, cart: cart, toggleCart: toggleCart })), activeTab === "cart" && (_jsx(CartTab, { favoriteProducts: favoriteProducts, toggleFavorite: toggleFavorite, loadDetail: loadDetail, buyNow: buyFromCart })), activeTab === "profile" && (_jsx(PostProfileTab, { user: user, myProducts: myProducts, markAsSold: markAsSold, loadDetail: loadDetail, mySales: mySales, myPurchases: myPurchases })), activeTab === "publish" && (_jsx(PostPublishTab, { publishForm: publishForm, setPublishForm: setPublishForm, onPublishImagesSelected: onPublishImagesSelected, publish: publish, presetLocations: PRESET_LOCATIONS })), activeTab === "manage" && user.role === "admin" && (_jsx(ManageTab, { adminStats: adminStats, adminProductTab: adminProductTab, setAdminProductTab: setAdminProductTab, allProducts: allProducts, adminFilteredProducts: adminFilteredProducts, audit: audit, toggleStatus: toggleStatus })), activeTab === "accounts" && user.role === "admin" && (_jsx(AccountsTab, { allUsers: allUsers, user: user, loadAccountDetail: loadAccountDetail, reviewAdminUser: reviewAdminUser, deleteUser: deleteUser })), activeTab === "messages" && (_jsx(MessagesTab, { conversations: conversations, lastSeenMessageTime: lastSeenMessageTime, openChat: openChat, chatTarget: chatTarget, relatedProduct: relatedProduct, chatMessages: chatMessages, user: user, chatInput: chatInput, setChatInput: setChatInput, setChatImageFile: setChatImageFile, sendChatMessage: sendChatMessage, buyNow: buyFromCart }))] })] }), _jsx(ProductDetailModal, { detail: detail, setDetail: setDetail, favorites: favorites, toggleFavorite: toggleFavorite, user: user, contactSeller: contactSeller, messages: messages, setMessageImageFile: setMessageImageFile, messageInput: messageInput, setMessageInput: setMessageInput, sendMessage: sendMessage }), _jsx(AccountDetailModal, { accountDetail: accountDetail, accountForm: accountForm, setAccountForm: setAccountForm, setAccountDetail: setAccountDetail, saveAccountDetail: saveAccountDetail })] }));
 }

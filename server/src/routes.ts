@@ -1,32 +1,30 @@
 import { Router } from "express";
-import fs from "fs/promises";
-import path from "path";
 import { adminOnly, auth, AuthedRequest } from "./auth.js";
 import {
-  DATA_DIR,
   initDb,
   newId,
-  readMessages,
-  readProducts,
   readUsers,
-  writeMessages,
-  writeProducts,
-  writeUsers,
+  findUserById,
+  findUserByUsername,
+  createUser,
+  updateUser,
+  deleteUser,
+  readProducts,
+  findProductById,
+  findProductsBySellerId,
+  findApprovedProducts,
+  createProduct,
+  updateProduct,
+  findMessagesByProductId,
+  findMessagesByUserId,
+  findConversationMessages,
+  createMessage,
+  readOrders,
+  findOrdersByUserId,
+  findOrdersByBuyerId,
+  createOrder,
 } from "./db.js";
-import { CreateProductBody, RegisterBody } from "@secondhand/shared/src/index.js";
-
-type Order = {
-  id: string;
-  productId: string;
-  productTitle: string;
-  buyerId: string;
-  buyerName: string;
-  sellerId: string;
-  sellerName: string;
-  price: number;
-  status: "completed";
-  createdAt: string;
-};
+import { CreateProductBody, RegisterBody, Order } from "@secondhand/shared/src/index.js";
 
 export const router = Router();
 
@@ -40,8 +38,8 @@ router.post("/auth/register", async (req, res) => {
   if (!body.username || !body.password || !body.role) {
     return res.status(400).json({ success: false, message: "缺少必填字段" });
   }
-  const users = await readUsers();
-  if (users.some((u) => u.username === body.username)) {
+  const existing = await findUserByUsername(body.username);
+  if (existing) {
     return res.status(409).json({ success: false, message: "用户名已存在" });
   }
   const isAdmin = body.role === "admin";
@@ -54,8 +52,7 @@ router.post("/auth/register", async (req, res) => {
     reviewNote: isAdmin ? "等待系统管理员审核" : undefined,
     createdAt: new Date().toISOString(),
   };
-  users.push(user);
-  await writeUsers(users);
+  await createUser(user);
   if (isAdmin) {
     return res.json({
       success: true,
@@ -67,9 +64,8 @@ router.post("/auth/register", async (req, res) => {
 
 router.post("/auth/login", async (req, res) => {
   const { username, password } = req.body as { username: string; password: string };
-  const users = await readUsers();
-  const user = users.find((u) => u.username === username && u.password === password);
-  if (!user) {
+  const user = await findUserByUsername(username);
+  if (!user || user.password !== password) {
     return res.status(401).json({ success: false, message: "用户名或密码错误" });
   }
   if (user.status === "pending_review") {
@@ -85,8 +81,7 @@ router.post("/auth/login", async (req, res) => {
 });
 
 router.get("/auth/me", auth, async (req: AuthedRequest, res) => {
-  const users = await readUsers();
-  const user = users.find((u) => u.id === req.userId);
+  const user = await findUserById(req.userId!);
   if (!user) {
     return res.status(404).json({ success: false, message: "用户不存在" });
   }
@@ -94,33 +89,26 @@ router.get("/auth/me", auth, async (req: AuthedRequest, res) => {
 });
 
 router.get("/products", auth, async (req: AuthedRequest, res) => {
-  const products = await readProducts();
   const mode = String(req.query.mode || "");
 
   if (req.role === "admin" || mode === "all") {
+    const products = await readProducts();
     return res.json({ success: true, data: products });
   }
 
   if (mode === "mine") {
-    return res.json({
-      success: true,
-      data: products.filter((p) => p.sellerId === req.userId),
-    });
+    const products = await findProductsBySellerId(req.userId!);
+    return res.json({ success: true, data: products });
   }
 
-  // 买家/卖家默认看到展示页数据（仅已通过）
-  return res.json({
-    success: true,
-    data: products.filter((p) => p.status === "approved"),
-  });
+  const products = await findApprovedProducts();
+  return res.json({ success: true, data: products });
 });
 
 router.get("/products/:id", auth, async (req: AuthedRequest, res) => {
-  const products = await readProducts();
-  const product = products.find((p) => p.id === req.params.id);
+  const product = await findProductById(req.params.id);
   if (!product) return res.status(404).json({ success: false, message: "商品不存在" });
 
-  // 管理员可看全部；非管理员只能看已通过或自己创建的商品
   if (req.role !== "admin" && product.status !== "approved" && product.sellerId !== req.userId) {
     return res.status(403).json({ success: false, message: "无权查看该商品" });
   }
@@ -146,9 +134,7 @@ router.post("/products", auth, async (req: AuthedRequest, res) => {
     });
   }
 
-  const users = await readUsers();
-  const currentUser = users.find((u) => u.id === req.userId);
-  const products = await readProducts();
+  const currentUser = await findUserById(req.userId!);
   const now = new Date().toISOString();
   const product = {
     id: newId("p"),
@@ -169,51 +155,56 @@ router.post("/products", auth, async (req: AuthedRequest, res) => {
     createdAt: now,
     updatedAt: now,
   };
-  products.push(product);
-  await writeProducts(products);
+  await createProduct(product);
   res.json({ success: true, data: product });
 });
 
 router.post("/products/:id/audit", auth, adminOnly, async (req, res) => {
   const { action, reason } = req.body as { action: "approve" | "reject"; reason?: string };
-  const products = await readProducts();
-  const idx = products.findIndex((p) => p.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ success: false, message: "商品不存在" });
+  const product = await findProductById(req.params.id);
+  if (!product) return res.status(404).json({ success: false, message: "商品不存在" });
   if (action === "reject" && !reason?.trim()) {
     return res.status(400).json({ success: false, message: "拒绝时必须填写理由" });
   }
   if (action === "approve") {
-    products[idx].status = "approved";
-    delete products[idx].rejectionReason;
+    await updateProduct(product.id, {
+      status: "approved",
+      rejectionReason: undefined,
+      updatedAt: new Date().toISOString(),
+    });
+    product.status = "approved";
+    delete product.rejectionReason;
   } else {
-    products[idx].status = "rejected";
-    products[idx].rejectionReason = reason!.trim();
+    await updateProduct(product.id, {
+      status: "rejected",
+      rejectionReason: reason!.trim(),
+      updatedAt: new Date().toISOString(),
+    });
+    product.status = "rejected";
+    product.rejectionReason = reason!.trim();
   }
-  products[idx].updatedAt = new Date().toISOString();
-  await writeProducts(products);
-  res.json({ success: true, data: products[idx] });
+  product.updatedAt = new Date().toISOString();
+  res.json({ success: true, data: product });
 });
 
 router.post("/products/:id/status", auth, adminOnly, async (req, res) => {
   const { status } = req.body as { status: "offline" | "approved" | "sold" };
-  const products = await readProducts();
-  const idx = products.findIndex((p) => p.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ success: false, message: "商品不存在" });
+  const product = await findProductById(req.params.id);
+  if (!product) return res.status(404).json({ success: false, message: "商品不存在" });
   if (status !== "offline" && status !== "approved" && status !== "sold") {
     return res.status(400).json({ success: false, message: "状态不合法" });
   }
-  products[idx].status = status;
-  products[idx].updatedAt = new Date().toISOString();
-  await writeProducts(products);
-  res.json({ success: true, data: products[idx] });
+  await updateProduct(product.id, {
+    status,
+    updatedAt: new Date().toISOString(),
+  });
+  product.status = status;
+  product.updatedAt = new Date().toISOString();
+  res.json({ success: true, data: product });
 });
 
 router.get("/products/:id/messages", auth, async (req, res) => {
-  const productId = req.params.id;
-  const messages = await readMessages();
-  const productMessages = messages
-    .filter((m) => m.productId === productId)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const productMessages = await findMessagesByProductId(req.params.id);
   res.json({ success: true, data: productMessages });
 });
 
@@ -222,17 +213,14 @@ router.post("/products/:id/messages", auth, async (req: AuthedRequest, res) => {
   if (!content) {
     return res.status(400).json({ success: false, message: "留言内容不能为空" });
   }
-  const users = await readUsers();
-  const currentUser = users.find((u) => u.id === req.userId);
+  const currentUser = await findUserById(req.userId!);
   if (!currentUser) {
     return res.status(404).json({ success: false, message: "用户不存在" });
   }
-  const products = await readProducts();
-  const product = products.find((p) => p.id === req.params.id);
+  const product = await findProductById(req.params.id);
   if (!product) {
     return res.status(404).json({ success: false, message: "商品不存在" });
   }
-  const messages = await readMessages();
   const newMessage = {
     id: newId("m"),
     productId: req.params.id,
@@ -243,18 +231,14 @@ router.post("/products/:id/messages", auth, async (req: AuthedRequest, res) => {
     content,
     createdAt: new Date().toISOString(),
   };
-  messages.push(newMessage);
-  await writeMessages(messages);
+  await createMessage(newMessage);
   res.json({ success: true, data: newMessage });
 });
 
 router.get("/conversations", auth, async (req: AuthedRequest, res) => {
-  const messages = await readMessages();
-  const userMessages = messages.filter(
-    (m) => m.fromUserId === req.userId || m.toUserId === req.userId
-  );
+  const messages = await findMessagesByUserId(req.userId!);
   const conversationMap = new Map<string, any>();
-  userMessages.forEach((msg) => {
+  messages.forEach((msg) => {
     const otherId = msg.fromUserId === req.userId ? msg.toUserId : msg.fromUserId;
     const otherName = msg.fromUserId === req.userId ? msg.toUsername : msg.fromUsername;
     if (!otherId || !otherName) return;
@@ -285,15 +269,7 @@ router.get("/conversations", auth, async (req: AuthedRequest, res) => {
 });
 
 router.get("/conversations/:userId", auth, async (req: AuthedRequest, res) => {
-  const targetUserId = req.params.userId;
-  const messages = await readMessages();
-  const chatMessages = messages
-    .filter(
-      (m) =>
-        (m.fromUserId === req.userId && m.toUserId === targetUserId) ||
-        (m.fromUserId === targetUserId && m.toUserId === req.userId)
-    )
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const chatMessages = await findConversationMessages(req.userId!, req.params.userId);
   res.json({ success: true, data: chatMessages });
 });
 
@@ -302,13 +278,11 @@ router.post("/conversations/:userId", auth, async (req: AuthedRequest, res) => {
   if (!content) {
     return res.status(400).json({ success: false, message: "消息内容不能为空" });
   }
-  const users = await readUsers();
-  const currentUser = users.find((u) => u.id === req.userId);
-  const targetUser = users.find((u) => u.id === req.params.userId);
+  const currentUser = await findUserById(req.userId!);
+  const targetUser = await findUserById(req.params.userId);
   if (!currentUser || !targetUser) {
     return res.status(404).json({ success: false, message: "用户不存在" });
   }
-  const messages = await readMessages();
   const newMessage = {
     id: newId("m"),
     productId: "",
@@ -319,8 +293,7 @@ router.post("/conversations/:userId", auth, async (req: AuthedRequest, res) => {
     content,
     createdAt: new Date().toISOString(),
   };
-  messages.push(newMessage);
-  await writeMessages(messages);
+  await createMessage(newMessage);
   res.json({ success: true, data: newMessage });
 });
 
@@ -330,17 +303,14 @@ router.get("/admin/users", auth, adminOnly, async (_req, res) => {
 });
 
 router.get("/admin/users/:id", auth, adminOnly, async (req, res) => {
-  const users = await readUsers();
-  const user = users.find((u) => u.id === req.params.id);
+  const user = await findUserById(req.params.id);
   if (!user) return res.status(404).json({ success: false, message: "用户不存在" });
   res.json({ success: true, data: user });
 });
 
 router.put("/admin/users/:id", auth, adminOnly, async (req: AuthedRequest, res) => {
-  const users = await readUsers();
-  const idx = users.findIndex((u) => u.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ success: false, message: "用户不存在" });
-  const target = users[idx];
+  const target = await findUserById(req.params.id);
+  if (!target) return res.status(404).json({ success: false, message: "用户不存在" });
   const body = req.body as Partial<{
     username: string;
     password: string;
@@ -351,8 +321,10 @@ router.put("/admin/users/:id", auth, adminOnly, async (req: AuthedRequest, res) 
   if (body.username !== undefined) {
     const username = body.username.trim();
     if (!username) return res.status(400).json({ success: false, message: "用户名不能为空" });
-    const exists = users.some((u) => u.id !== target.id && u.username === username);
-    if (exists) return res.status(409).json({ success: false, message: "用户名已存在" });
+    const existing = await findUserByUsername(username);
+    if (existing && existing.id !== target.id) {
+      return res.status(409).json({ success: false, message: "用户名已存在" });
+    }
     target.username = username;
   }
   if (body.password !== undefined) {
@@ -372,110 +344,104 @@ router.put("/admin/users/:id", auth, adminOnly, async (req: AuthedRequest, res) 
   if (target.id === req.userId && target.role !== "admin") {
     return res.status(400).json({ success: false, message: "不能把当前登录管理员降级为普通用户" });
   }
-  users[idx] = target;
-  await writeUsers(users);
+  await updateUser(target.id, {
+    username: target.username,
+    password: target.password,
+    role: target.role,
+    status: target.status,
+    reviewNote: target.reviewNote,
+  });
   res.json({ success: true, data: target });
 });
 
 router.post("/admin/users/:id/review", auth, adminOnly, async (req, res) => {
   const { action, note } = req.body as { action: "approve" | "reject"; note?: string };
-  const users = await readUsers();
-  const idx = users.findIndex((u) => u.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ success: false, message: "用户不存在" });
-  if (users[idx].role !== "admin") {
+  const target = await findUserById(req.params.id);
+  if (!target) return res.status(404).json({ success: false, message: "用户不存在" });
+  if (target.role !== "admin") {
     return res.status(400).json({ success: false, message: "仅管理员申请需要审核" });
   }
-  if (users[idx].status !== "pending_review") {
+  if (target.status !== "pending_review") {
     return res.status(400).json({ success: false, message: "该账号不在待审核状态" });
   }
-  users[idx].status = action === "approve" ? "active" : "rejected";
-  users[idx].reviewNote = note || (action === "approve" ? "已通过系统管理员审核" : "管理员审核拒绝");
-  await writeUsers(users);
-  res.json({ success: true, data: users[idx] });
+  const newStatus = action === "approve" ? "active" : "rejected";
+  const reviewNote = note || (action === "approve" ? "已通过系统管理员审核" : "管理员审核拒绝");
+  await updateUser(target.id, { status: newStatus, reviewNote });
+  target.status = newStatus;
+  target.reviewNote = reviewNote;
+  res.json({ success: true, data: target });
 });
 
 router.post("/products/:id/sold", auth, async (req: AuthedRequest, res) => {
-  const products = await readProducts();
-  const idx = products.findIndex((p) => p.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ success: false, message: "商品不存在" });
-  if (products[idx].sellerId !== req.userId && req.role !== "admin") {
+  const product = await findProductById(req.params.id);
+  if (!product) return res.status(404).json({ success: false, message: "商品不存在" });
+  if (product.sellerId !== req.userId && req.role !== "admin") {
     return res.status(403).json({ success: false, message: "只有卖家可以标记为已售" });
   }
-  if (products[idx].status !== "approved") {
+  if (product.status !== "approved") {
     return res.status(400).json({ success: false, message: "只有已通过的商品可以标记为已售" });
   }
 
-  const ordersData = JSON.parse(
-    await fs.readFile(path.join(DATA_DIR, "orders.json"), "utf-8").catch(() => "[]")
-  ) as Order[];
-  const newOrder = {
+  const newOrder: Order = {
     id: newId("o"),
-    productId: products[idx].id,
-    productTitle: products[idx].title,
+    productId: product.id,
+    productTitle: product.title,
     buyerId: req.body?.buyerId || "u-system",
     buyerName: req.body?.buyerName || "系统模拟",
-    sellerId: products[idx].sellerId,
-    sellerName: products[idx].sellerName,
-    price: products[idx].price,
-    status: "completed" as const,
+    sellerId: product.sellerId,
+    sellerName: product.sellerName,
+    price: product.price,
+    status: "completed",
     createdAt: new Date().toISOString(),
   };
 
-  products[idx].status = "sold";
-  products[idx].updatedAt = new Date().toISOString();
+  await updateProduct(product.id, {
+    status: "sold",
+    updatedAt: new Date().toISOString(),
+  });
+  await createOrder(newOrder);
 
-  ordersData.push(newOrder);
+  product.status = "sold";
+  product.updatedAt = new Date().toISOString();
 
-  await Promise.all([
-    writeProducts(products),
-    fs.writeFile(path.join(DATA_DIR, "orders.json"), JSON.stringify(ordersData, null, 2)),
-  ]);
-
-  res.json({ success: true, data: { product: products[idx], order: newOrder } });
+  res.json({ success: true, data: { product, order: newOrder } });
 });
 
 router.post("/products/:id/purchase", auth, async (req: AuthedRequest, res) => {
-  const products = await readProducts();
-  const idx = products.findIndex((p) => p.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ success: false, message: "商品不存在" });
-  const target = products[idx];
-  if (target.status !== "approved") {
+  const product = await findProductById(req.params.id);
+  if (!product) return res.status(404).json({ success: false, message: "商品不存在" });
+  if (product.status !== "approved") {
     return res.status(400).json({ success: false, message: "该商品当前不可购买" });
   }
-  if (target.sellerId === req.userId) {
+  if (product.sellerId === req.userId) {
     return res.status(400).json({ success: false, message: "不能购买自己发布的商品" });
   }
-  const users = await readUsers();
-  const buyer = users.find((u) => u.id === req.userId);
+  const buyer = await findUserById(req.userId!);
   if (!buyer) return res.status(404).json({ success: false, message: "用户不存在" });
-  const ordersData = JSON.parse(
-    await fs.readFile(path.join(DATA_DIR, "orders.json"), "utf-8").catch(() => "[]")
-  ) as Order[];
-  const newOrder = {
+  const newOrder: Order = {
     id: newId("o"),
-    productId: target.id,
-    productTitle: target.title,
+    productId: product.id,
+    productTitle: product.title,
     buyerId: req.userId!,
     buyerName: buyer.username,
-    sellerId: target.sellerId,
-    sellerName: target.sellerName,
-    price: target.price,
-    status: "completed" as const,
+    sellerId: product.sellerId,
+    sellerName: product.sellerName,
+    price: product.price,
+    status: "completed",
     createdAt: new Date().toISOString(),
   };
-  products[idx].status = "sold";
-  products[idx].updatedAt = new Date().toISOString();
-  ordersData.push(newOrder);
-  await Promise.all([
-    writeProducts(products),
-    fs.writeFile(path.join(DATA_DIR, "orders.json"), JSON.stringify(ordersData, null, 2)),
-  ]);
-  res.json({ success: true, data: { product: products[idx], order: newOrder } });
+  await updateProduct(product.id, {
+    status: "sold",
+    updatedAt: new Date().toISOString(),
+  });
+  await createOrder(newOrder);
+  product.status = "sold";
+  product.updatedAt = new Date().toISOString();
+  res.json({ success: true, data: { product, order: newOrder } });
 });
 
 router.delete("/admin/users/:id", auth, adminOnly, async (req: AuthedRequest, res) => {
-  const users = await readUsers();
-  const target = users.find((u) => u.id === req.params.id);
+  const target = await findUserById(req.params.id);
   if (!target) return res.status(404).json({ success: false, message: "用户不存在" });
   if (target.id === req.userId) {
     return res.status(400).json({ success: false, message: "不能删除当前登录账号" });
@@ -483,46 +449,36 @@ router.delete("/admin/users/:id", auth, adminOnly, async (req: AuthedRequest, re
   if (target.id === "u-admin") {
     return res.status(400).json({ success: false, message: "不能删除系统管理员" });
   }
-  const nextUsers = users.filter((u) => u.id !== req.params.id);
-  await writeUsers(nextUsers);
+  await deleteUser(req.params.id);
   res.json({ success: true });
 });
 
 router.get("/orders", auth, async (req: AuthedRequest, res) => {
-  const ordersData = JSON.parse(
-    await fs.readFile(path.join(DATA_DIR, "orders.json"), "utf-8").catch(() => "[]")
-  ) as Order[];
-
   if (req.role === "admin") {
+    const ordersData = await readOrders();
     return res.json({ success: true, data: ordersData });
   }
-
-  const userOrders = ordersData.filter(
-    (o) => o.buyerId === req.userId || o.sellerId === req.userId
-  );
+  const userOrders = await findOrdersByUserId(req.userId!);
   res.json({ success: true, data: userOrders });
 });
 
 router.get("/recommendations", auth, async (req: AuthedRequest, res) => {
   const products = await readProducts();
-  const ordersData = JSON.parse(
-    await fs.readFile(path.join(DATA_DIR, "orders.json"), "utf-8").catch(() => "[]")
-  ) as Order[];
+  const userOrders = await findOrdersByBuyerId(req.userId!);
   const approvedProducts = products.filter((p) => p.status === "approved");
 
-  const userPurchases = ordersData.filter((o) => o.buyerId === req.userId);
-  const purchasedCategories = new Set(userPurchases.map((o) => {
+  const purchasedCategories = new Set(userOrders.map((o) => {
     const product = products.find((p) => p.id === o.productId);
     return product?.category;
   }));
 
   let recommended = approvedProducts.filter((p) =>
-    purchasedCategories.has(p.category) && !userPurchases.some((up) => up.productId === p.id)
+    purchasedCategories.has(p.category) && !userOrders.some((up) => up.productId === p.id)
   );
 
   if (recommended.length < 3) {
     const remaining = approvedProducts.filter(
-      (p) => !recommended.includes(p) && !userPurchases.some((up) => up.productId === p.id)
+      (p) => !recommended.includes(p) && !userOrders.some((up) => up.productId === p.id)
     );
     recommended = [...recommended, ...remaining.slice(0, 5 - recommended.length)];
   }

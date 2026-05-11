@@ -76,5 +76,15 @@
     "toUsername": "admin",
     "content": "hello",
     "createdAt": "2026-04-29T12:09:09.630Z"
+  },
+  {
+    "id": "m-1778489533896-zyly9r",
+    "productId": "",
+    "fromUserId": "u-admin",
+    "fromUsername": "admin",
+    "toUserId": "u-admin",
+    "toUsername": "admin",
+    "content": "你好",
+    "createdAt": "2026-05-11T08:52:13.896Z"
   }
 ]
