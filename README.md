@@ -21,20 +21,19 @@ pnpm install
 npm install mysql2
 pnpm dev
 ```
-注意：电脑首先要已经安装MYSQL
-然后修改：db.ts （4-10行）
-const DB_CONFIG = {
-  host: process.env.DB_HOST || "localhost",
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || "root",（root改为自己的数据库名字）
+- 注意：电脑首先要已经安装MYSQL
+- 然后修改：db.ts （4-10行）
+- const DB_CONFIG = {
+    host: process.env.DB_HOST || "localhost",
+   port: Number(process.env.DB_PORT) || 3306,
+    user: process.env.DB_USER || "root",（root改为自己的数据库名字）
   password: process.env.DB_PASSWORD || "xxxx",(把xxx改为自己数据库密码）
   database: process.env.DB_NAME || "secondhand",
 };
-同理更新 migrate.ts 中（6-11）行的密码
-然后：cd f:\secondhand\-\server; 
-pnpm migrate
-这一步是完成数据的迁移
-然后就可以正常在server和web下pnpm dev启动程序了
+- 同理更新 migrate.ts 中（6-11）行的密码
+- 然后：cd f:\secondhand\-\server; 
+- pnpm migrate
+- 这一步是完成数据的迁移，然后就可以正常在server和web下pnpm dev启动程序了
 
 ## TOdolist
 当前代办任务：
