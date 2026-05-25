@@ -3,6 +3,7 @@ import type {
   Order,
   Product,
   ProductMessage,
+  ProfileStats,
   Role,
   User,
 } from "../types";
@@ -103,6 +104,14 @@ export const api = {
         headers: { "Content-Type": "application/json", ...headers },
       }),
   },
+  favorites: {
+    list: (headers: HeadersInit) => request<string[]>("/favorites", { headers }),
+    toggle: (id: string, headers: HeadersInit) =>
+      request<{ productId: string; liked: boolean }>(`/products/${id}/favorite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+      }),
+  },
   messages: {
     byProduct: (id: string, headers: HeadersInit) =>
       request<ProductMessage[]>(`/products/${id}/messages`, { headers }),
@@ -152,6 +161,16 @@ export const api = {
   },
   orders: {
     list: (headers: HeadersInit) => request<Order[]>("/orders", { headers }),
+    rate: (id: string, rating: number, headers: HeadersInit) =>
+      request<Order>(`/orders/${id}/rate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ rating }),
+      }),
+  },
+  profile: {
+    stats: (headers: HeadersInit) =>
+      request<ProfileStats>("/profile/stats", { headers }),
   },
   recommendations: {
     list: (headers: HeadersInit) =>

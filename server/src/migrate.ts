@@ -7,7 +7,7 @@ const DB_CONFIG = {
   host: process.env.DB_HOST || "localhost",
   port: Number(process.env.DB_PORT) || 3306,
   user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "200508140086",
+  password: process.env.DB_PASSWORD || "zsh123456",
   database: process.env.DB_NAME || "secondhand",
 };
 
@@ -24,6 +24,8 @@ type OrderData = {
   price: number;
   status: "completed";
   createdAt: string;
+  rating?: number;
+  ratedAt?: string;
 };
 
 async function migrate() {
@@ -115,9 +117,22 @@ async function migrate() {
       sellerName VARCHAR(64) NOT NULL,
       price DECIMAL(10,2) NOT NULL DEFAULT 0,
       status ENUM('completed') NOT NULL DEFAULT 'completed',
+      rating TINYINT UNSIGNED,
+      ratedAt DATETIME,
       createdAt DATETIME NOT NULL,
       INDEX idx_buyerId (buyerId),
       INDEX idx_sellerId (sellerId)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS favorites (
+      userId VARCHAR(64) NOT NULL,
+      productId VARCHAR(64) NOT NULL,
+      createdAt DATETIME NOT NULL,
+      PRIMARY KEY (userId, productId),
+      INDEX idx_favorites_userId (userId),
+      INDEX idx_favorites_productId (productId)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
@@ -211,7 +226,7 @@ async function migrate() {
     const orders: OrderData[] = JSON.parse(ordersRaw);
     for (const o of orders) {
       await pool.query(
-        `INSERT IGNORE INTO orders (id, productId, productTitle, buyerId, buyerName, sellerId, sellerName, price, status, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT IGNORE INTO orders (id, productId, productTitle, buyerId, buyerName, sellerId, sellerName, price, status, rating, ratedAt, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           o.id,
           o.productId,
@@ -222,6 +237,8 @@ async function migrate() {
           o.sellerName,
           o.price,
           o.status,
+          o.rating ?? null,
+          o.ratedAt ? new Date(o.ratedAt) : null,
           new Date(o.createdAt),
         ]
       );

@@ -80,4 +80,6 @@ export interface Order {
   price: number;
   status: "completed";
   createdAt: string;
+  rating?: number;
+  ratedAt?: string;
 }

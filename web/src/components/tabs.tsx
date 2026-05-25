@@ -7,11 +7,12 @@ import type {
   Product,
   ProductMessage,
   PublishForm,
+  ProfileStats,
   Status,
   User,
 } from "../types";
 import type { PresetLocation } from "../constants/locations";
-import { distanceKm } from "../utils";
+import { distanceKm } from "../utils.ts";
 
 export function MarketTab(props: {
   keyword: string;
@@ -140,10 +141,10 @@ export function MarketTab(props: {
                   )
                 }
               >
-                <option value="distance">距离最近</option>
+                <option value="distance">距离由近到远</option>
                 <option value="time">最新发布</option>
-                <option value="price-desc">价格由高到低</option>
                 <option value="price-asc">价格由低到高</option>
+                <option value="price-desc">价格由高到低</option>
               </select>
               <button className="location-btn" onClick={pickCurrentLocation}>
                 📍 {userLocation ? "已定位" : "定位"}
@@ -556,6 +557,7 @@ export function MineTab(props: {
                 <th>卖家</th>
                 <th>价格</th>
                 <th>购买时间</th>
+                <th>评分</th>
               </tr>
             </thead>
             <tbody>
@@ -565,6 +567,15 @@ export function MineTab(props: {
                   <td>{o.sellerName}</td>
                   <td>¥{o.price}</td>
                   <td>{new Date(o.createdAt).toLocaleString("zh-CN")}</td>
+                  <td>
+                    {o.rating ? (
+                      <span>已评分 {o.rating}/10</span>
+                    ) : (
+                      <button className="small" onClick={() => onRateOrder(o)}>
+                        去评分
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -824,8 +835,10 @@ export function PostProfileTab(props: {
   loadDetail: (id: string) => void;
   mySales: Order[];
   myPurchases: Order[];
+  profileStats: ProfileStats;
+  onRateOrder: (order: Order) => void;
 }) {
-  const { user, myProducts, markAsSold, loadDetail, mySales, myPurchases } =
+  const { user, myProducts, markAsSold, loadDetail, mySales, myPurchases, profileStats, onRateOrder } =
     props;
   const [profileTab, setProfileTab] = useState<"published" | "orders">(
     "published",
@@ -868,7 +881,7 @@ export function PostProfileTab(props: {
             <span className="profile-badge">{verifiedText}</span>
           </div>
           <div className="profile-detail-row">
-            <div className="profile-detail-pill">诚信分：98</div>
+            <div className="profile-detail-pill">诚信分：{profileStats.trustScore.toFixed(1)}</div>
             <div className="profile-detail-pill">
               {user.role === "admin"
                 ? "管理员"
@@ -889,7 +902,7 @@ export function PostProfileTab(props: {
             <div className="profile-stat-label">成交订单</div>
           </div>
           <div className="profile-stat">
-            <div className="profile-stat-num">0</div>
+            <div className="profile-stat-num">{profileStats.likesCount}</div>
             <div className="profile-stat-label">被点赞</div>
           </div>
         </div>

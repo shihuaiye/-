@@ -72,6 +72,14 @@ export type Order = {
   price: number;
   status: "completed";
   createdAt: string;
+  rating?: number;
+  ratedAt?: string;
+};
+
+export type ProfileStats = {
+  trustScore: number;
+  likesCount: number;
+  ratingCount: number;
 };
 
 export type PublishForm = {

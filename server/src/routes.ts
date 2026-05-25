@@ -23,6 +23,11 @@ import {
   findOrdersByUserId,
   findOrdersByBuyerId,
   createOrder,
+  findOrderById,
+  updateOrderRating,
+  findFavoriteProductIdsByUserId,
+  toggleFavoriteProduct,
+  getProfileStats,
 } from "./db.js";
 import { CreateProductBody, RegisterBody, Order } from "@secondhand/shared/src/index.js";
 
@@ -206,6 +211,18 @@ router.post("/products/:id/status", auth, adminOnly, async (req, res) => {
 router.get("/products/:id/messages", auth, async (req, res) => {
   const productMessages = await findMessagesByProductId(req.params.id);
   res.json({ success: true, data: productMessages });
+});
+
+router.get("/favorites", auth, async (req: AuthedRequest, res) => {
+  const favoriteProductIds = await findFavoriteProductIdsByUserId(req.userId!);
+  res.json({ success: true, data: favoriteProductIds });
+});
+
+router.post("/products/:id/favorite", auth, async (req: AuthedRequest, res) => {
+  const product = await findProductById(req.params.id);
+  if (!product) return res.status(404).json({ success: false, message: "商品不存在" });
+  const result = await toggleFavoriteProduct(req.userId!, req.params.id);
+  res.json({ success: true, data: { productId: req.params.id, liked: result.liked } });
 });
 
 router.post("/products/:id/messages", auth, async (req: AuthedRequest, res) => {
@@ -440,6 +457,26 @@ router.post("/products/:id/purchase", auth, async (req: AuthedRequest, res) => {
   res.json({ success: true, data: { product, order: newOrder } });
 });
 
+router.post("/orders/:id/rate", auth, async (req: AuthedRequest, res) => {
+  const rating = Number(req.body?.rating);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 10) {
+    return res.status(400).json({ success: false, message: "评分必须是 1 到 10 之间的整数" });
+  }
+  const order = await findOrderById(req.params.id);
+  if (!order) return res.status(404).json({ success: false, message: "订单不存在" });
+  if (order.buyerId !== req.userId) {
+    return res.status(403).json({ success: false, message: "只能评价自己的购买订单" });
+  }
+  if (order.rating !== undefined) {
+    return res.status(400).json({ success: false, message: "该订单已评价" });
+  }
+  const updated = await updateOrderRating(order.id, req.userId!, rating);
+  if (!updated) {
+    return res.status(404).json({ success: false, message: "订单不存在" });
+  }
+  res.json({ success: true, data: updated });
+});
+
 router.delete("/admin/users/:id", auth, adminOnly, async (req: AuthedRequest, res) => {
   const target = await findUserById(req.params.id);
   if (!target) return res.status(404).json({ success: false, message: "用户不存在" });
@@ -460,6 +497,11 @@ router.get("/orders", auth, async (req: AuthedRequest, res) => {
   }
   const userOrders = await findOrdersByUserId(req.userId!);
   res.json({ success: true, data: userOrders });
+});
+
+router.get("/profile/stats", auth, async (req: AuthedRequest, res) => {
+  const stats = await getProfileStats(req.userId!);
+  res.json({ success: true, data: stats });
 });
 
 router.get("/recommendations", auth, async (req: AuthedRequest, res) => {
