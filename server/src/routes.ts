@@ -29,8 +29,21 @@ import {
   findFavoriteProductIdsByUserId,
   toggleFavoriteProduct,
   getProfileStats,
+  countCompletedOrdersBySellerId,
 } from "./db.js";
-import { CreateProductBody, RegisterBody, Order, Product } from "@secondhand/shared/src/index.js";
+import {
+  SYSTEM_USER_ID,
+  createPurchaseOrder,
+  sellerConfirmOrder,
+  sellerRejectOrder,
+  buyerConfirmOrder,
+} from "./orderFlow.js";
+import {
+  CreateProductBody,
+  RegisterBody,
+  Order,
+  Product,
+} from "@secondhand/shared/src/index.js";
 
 export const router = Router();
 
@@ -298,7 +311,33 @@ router.post("/products/:id/messages", auth, async (req: AuthedRequest, res) => {
 router.get("/conversations", auth, async (req: AuthedRequest, res) => {
   const messages = await findMessagesByUserId(req.userId!);
   const conversationMap = new Map<string, any>();
+  let systemConv: any = null;
+
   messages.forEach((msg) => {
+    if (msg.fromUserId === SYSTEM_USER_ID && msg.toUserId === req.userId) {
+      const preview = msg.content.replace(/^\[ORDER:[^\]]+\]\s*/, "");
+      if (!systemConv) {
+        systemConv = {
+          userId: SYSTEM_USER_ID,
+          username: "系统通知",
+          lastMessage: preview,
+          lastTime: msg.createdAt,
+          unreadCount: 1,
+          productId: msg.productId,
+          isSystem: true,
+        };
+      } else {
+        if (msg.createdAt > systemConv.lastTime) {
+          systemConv.lastMessage = preview;
+          systemConv.lastTime = msg.createdAt;
+        }
+        systemConv.unreadCount++;
+      }
+      return;
+    }
+    if (msg.fromUserId === SYSTEM_USER_ID || msg.fromUserId === req.userId && msg.toUserId === SYSTEM_USER_ID) {
+      return;
+    }
     const otherId = msg.fromUserId === req.userId ? msg.toUserId : msg.fromUserId;
     const otherName = msg.fromUserId === req.userId ? msg.toUsername : msg.fromUsername;
     if (!otherId || !otherName) return;
@@ -322,18 +361,36 @@ router.get("/conversations", auth, async (req: AuthedRequest, res) => {
       }
     }
   });
-  const conversations = Array.from(conversationMap.values()).sort(
-    (a, b) => b.lastTime.localeCompare(a.lastTime)
-  );
+
+  const conversations = Array.from(conversationMap.values());
+  if (systemConv) conversations.unshift(systemConv);
+  conversations.sort((a, b) => b.lastTime.localeCompare(a.lastTime));
+  if (systemConv) {
+    const idx = conversations.findIndex((c) => c.userId === SYSTEM_USER_ID);
+    if (idx > 0) {
+      conversations.splice(idx, 1);
+      conversations.unshift(systemConv);
+    }
+  }
   res.json({ success: true, data: conversations });
 });
 
 router.get("/conversations/:userId", auth, async (req: AuthedRequest, res) => {
+  if (req.params.userId === SYSTEM_USER_ID) {
+    const all = await findMessagesByUserId(req.userId!);
+    const chatMessages = all
+      .filter((m) => m.fromUserId === SYSTEM_USER_ID && m.toUserId === req.userId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return res.json({ success: true, data: chatMessages });
+  }
   const chatMessages = await findConversationMessages(req.userId!, req.params.userId);
   res.json({ success: true, data: chatMessages });
 });
 
 router.post("/conversations/:userId", auth, async (req: AuthedRequest, res) => {
+  if (req.params.userId === SYSTEM_USER_ID) {
+    return res.status(400).json({ success: false, message: "无法向系统发送私信" });
+  }
   const content = String(req.body?.content || "").trim();
   if (!content) {
     return res.status(400).json({ success: false, message: "消息内容不能为空" });
@@ -452,6 +509,8 @@ router.post("/products/:id/sold", auth, async (req: AuthedRequest, res) => {
     sellerName: product.sellerName,
     price: product.price,
     status: "completed",
+    buyerConfirmed: true,
+    sellerConfirmed: true,
     createdAt: new Date().toISOString(),
   };
 
@@ -478,26 +537,42 @@ router.post("/products/:id/purchase", auth, async (req: AuthedRequest, res) => {
   }
   const buyer = await findUserById(req.userId!);
   if (!buyer) return res.status(404).json({ success: false, message: "用户不存在" });
-  const newOrder: Order = {
-    id: newId("o"),
-    productId: product.id,
-    productTitle: product.title,
-    buyerId: req.userId!,
-    buyerName: buyer.username,
-    sellerId: product.sellerId,
-    sellerName: product.sellerName,
-    price: product.price,
-    status: "completed",
-    createdAt: new Date().toISOString(),
-  };
-  await updateProduct(product.id, {
-    status: "sold",
-    updatedAt: new Date().toISOString(),
-  });
-  await createOrder(newOrder);
-  product.status = "sold";
-  product.updatedAt = new Date().toISOString();
-  res.json({ success: true, data: { product, order: newOrder } });
+  try {
+    const newOrder = await createPurchaseOrder(product, req.userId!, buyer.username);
+    res.json({ success: true, data: { product, order: newOrder } });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error?.message || "下单失败" });
+  }
+});
+
+router.post("/orders/:id/seller-confirm", auth, async (req: AuthedRequest, res) => {
+  try {
+    const order = await sellerConfirmOrder(req.params.id, req.userId!);
+    const product = await findProductById(order.productId);
+    res.json({ success: true, data: { order, product } });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error?.message || "操作失败" });
+  }
+});
+
+router.post("/orders/:id/seller-reject", auth, async (req: AuthedRequest, res) => {
+  try {
+    const order = await sellerRejectOrder(req.params.id, req.userId!);
+    const product = await findProductById(order.productId);
+    res.json({ success: true, data: { order, product } });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error?.message || "操作失败" });
+  }
+});
+
+router.post("/orders/:id/buyer-confirm", auth, async (req: AuthedRequest, res) => {
+  try {
+    const order = await buyerConfirmOrder(req.params.id, req.userId!);
+    const product = await findProductById(order.productId);
+    res.json({ success: true, data: { order, product } });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error?.message || "操作失败" });
+  }
 });
 
 router.post("/orders/:id/rate", auth, async (req: AuthedRequest, res) => {
@@ -509,6 +584,9 @@ router.post("/orders/:id/rate", auth, async (req: AuthedRequest, res) => {
   if (!order) return res.status(404).json({ success: false, message: "订单不存在" });
   if (order.buyerId !== req.userId) {
     return res.status(403).json({ success: false, message: "只能评价自己的购买订单" });
+  }
+  if (order.status !== "completed") {
+    return res.status(400).json({ success: false, message: "仅已完成订单可评价" });
   }
   if (order.rating !== undefined) {
     return res.status(400).json({ success: false, message: "该订单已评价" });
@@ -545,6 +623,36 @@ router.get("/orders", auth, async (req: AuthedRequest, res) => {
 router.get("/profile/stats", auth, async (req: AuthedRequest, res) => {
   const stats = await getProfileStats(req.userId!);
   res.json({ success: true, data: stats });
+});
+
+router.get("/users/:id/profile", auth, async (req, res) => {
+  const seller = await findUserById(req.params.id);
+  if (!seller) {
+    return res.status(404).json({ success: false, message: "用户不存在" });
+  }
+  const products = await findProductsBySellerId(seller.id);
+  const listed = products.filter((p) => p.status === "approved");
+  const publishedCount = products.filter((p) =>
+    ["approved", "offline", "sold"].includes(p.status)
+  ).length;
+  const stats = await getProfileStats(seller.id);
+  const completedOrderCount = await countCompletedOrdersBySellerId(seller.id);
+  const school =
+    listed[0]?.campus ||
+    products.find((p) => p.campus)?.campus ||
+    "未填写";
+  res.json({
+    success: true,
+    data: {
+      id: seller.id,
+      username: seller.username,
+      trustScore: stats.trustScore,
+      school,
+      publishedCount,
+      completedOrderCount,
+      products: listed,
+    },
+  });
 });
 
 router.get("/recommendations", auth, async (req: AuthedRequest, res) => {

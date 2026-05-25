@@ -11,6 +11,14 @@ import type {
   Status,
   User,
 } from "../types";
+import { SYSTEM_USER_ID } from "../types";
+import {
+  findOrderById,
+  orderStatusClass,
+  orderStatusLabel,
+  parseOrderIdFromContent,
+  stripOrderTag,
+} from "../orderUtils";
 import type { PresetLocation } from "../utils.ts";
 import { distanceKm, getProductLocation, PRESET_LOCATIONS } from "../utils.ts";
 
@@ -560,10 +568,10 @@ export function MineTab(props: {
                   <td>
                     {o.rating ? (
                       <span>已评分 {o.rating}/10</span>
+                    ) : o.status === "completed" ? (
+                      <span className="muted">可在个人中心订单中评分</span>
                     ) : (
-                      <button className="small" onClick={() => onRateOrder(o)}>
-                        去评分
-                      </button>
+                      <span className="muted">{orderStatusLabel(o.status)}</span>
                     )}
                   </td>
                 </tr>
@@ -897,10 +905,6 @@ export function PostProfileTab(props: {
             </div>
             <div className="profile-stat-label">成交订单</div>
           </div>
-          <div className="profile-stat">
-            <div className="profile-stat-num">{profileStats.likesCount}</div>
-            <div className="profile-stat-label">被点赞</div>
-          </div>
         </div>
       </div>
 
@@ -997,7 +1001,9 @@ export function PostProfileTab(props: {
                   <div className="order-main">
                     <div className="order-top-row">
                       <span className="order-id">订单号：{o.id}</span>
-                      <span className="order-status">交易完成</span>
+                      <span className={`order-status ${orderStatusClass(o.status)}`}>
+                        {orderStatusLabel(o.status)}
+                      </span>
                     </div>
                     <div className="order-title">{o.productTitle}</div>
                     <div className="order-meta">
@@ -1013,6 +1019,16 @@ export function PostProfileTab(props: {
                     >
                       查看详情
                     </button>
+                    {o.status === "completed" &&
+                      o.buyerId === user.id &&
+                      o.rating === undefined && (
+                        <button
+                          className="small"
+                          onClick={() => onRateOrder(o)}
+                        >
+                          评价
+                        </button>
+                      )}
                   </div>
                 </div>
               );
@@ -1348,6 +1364,10 @@ export function MessagesTab(props: {
   setChatImageFile: (value: File | null) => void;
   sendChatMessage: () => void;
   buyNow: (product: Product) => void;
+  orders: Order[];
+  onSellerConfirmOrder: (orderId: string) => void;
+  onSellerRejectOrder: (orderId: string) => void;
+  onBuyerConfirmOrder: (orderId: string) => void;
 }) {
   const {
     conversations,
@@ -1362,9 +1382,14 @@ export function MessagesTab(props: {
     setChatImageFile,
     sendChatMessage,
     buyNow,
+    orders,
+    onSellerConfirmOrder,
+    onSellerRejectOrder,
+    onBuyerConfirmOrder,
   } = props;
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const isSystemChat = chatTarget?.userId === SYSTEM_USER_ID;
 
   return (
     <section className="messages-layout">
@@ -1415,7 +1440,11 @@ export function MessagesTab(props: {
               <div>
                 <div className="messages-chat-name">{chatTarget.username}</div>
                 <div className="messages-chat-tag">
-                  {user.role === "admin" ? "管理员" : "普通用户"}
+                  {isSystemChat
+                    ? "系统发送"
+                    : user.role === "admin"
+                      ? "管理员"
+                      : "普通用户"}
                 </div>
               </div>
               <div className="messages-chat-actions">
@@ -1455,44 +1484,104 @@ export function MessagesTab(props: {
                   <p className="muted">暂无消息，开始对话吧！</p>
                 </div>
               ) : (
-                chatMessages.map((m) => (
-                  <div
-                    key={m.id}
-                    className={`chat-bubble ${m.fromUserId === user.id ? "mine" : "other"}`}
-                  >
-                    <b>{m.fromUsername}</b>
-                    {m.content.includes("[图片:") ? (
-                      <div className="message-content">
-                        {m.content
-                          .split("\n")
-                          .map((line, i) =>
-                            line.startsWith("[图片:") ? (
-                              <img
-                                key={i}
-                                src={line
-                                  .replace("[图片:", "")
-                                  .replace("]", "")
-                                  .trim()}
-                                alt="图片消息"
-                                className="chat-image"
-                              />
-                            ) : (
-                              <p key={i}>{line}</p>
-                            ),
-                          )}
-                      </div>
-                    ) : (
-                      <p>{m.content}</p>
-                    )}
-                    <span className="muted">
-                      {new Date(m.createdAt).toLocaleTimeString("zh-CN")}
-                    </span>
-                  </div>
-                ))
+                chatMessages.map((m) => {
+                  const isSystem = m.fromUserId === SYSTEM_USER_ID;
+                  const displayName = isSystem ? "系统发送" : m.fromUsername;
+                  const text = stripOrderTag(m.content);
+                  const orderId = parseOrderIdFromContent(m.content);
+                  const order = orderId ? findOrderById(orders, orderId) : undefined;
+                  const showSellerActions =
+                    isSystemChat &&
+                    order &&
+                    order.status === "in_progress" &&
+                    order.sellerId === user.id &&
+                    !order.sellerConfirmed &&
+                    text.includes("申请购买");
+                  const showBuyerConfirm =
+                    isSystemChat &&
+                    order &&
+                    order.status === "in_progress" &&
+                    order.buyerId === user.id &&
+                    order.sellerConfirmed &&
+                    !order.buyerConfirmed &&
+                    text.includes("恭喜");
+
+                  return (
+                    <div
+                      key={m.id}
+                      className={`chat-bubble ${isSystem ? "system" : m.fromUserId === user.id ? "mine" : "other"}`}
+                    >
+                      <b>{displayName}</b>
+                      {m.content.includes("[图片:") ? (
+                        <div className="message-content">
+                          {m.content
+                            .split("\n")
+                            .map((line, i) =>
+                              line.startsWith("[图片:") ? (
+                                <img
+                                  key={i}
+                                  src={line
+                                    .replace("[图片:", "")
+                                    .replace("]", "")
+                                    .trim()}
+                                  alt="图片消息"
+                                  className="chat-image"
+                                />
+                              ) : (
+                                <p key={i}>{stripOrderTag(line)}</p>
+                              ),
+                            )}
+                        </div>
+                      ) : (
+                        <p>{text}</p>
+                      )}
+                      {showSellerActions && orderId && (
+                        <div className="order-action-row">
+                          <button
+                            type="button"
+                            className="small"
+                            onClick={() => onSellerConfirmOrder(orderId)}
+                          >
+                            确认交易
+                          </button>
+                          <button
+                            type="button"
+                            className="small danger"
+                            onClick={() => onSellerRejectOrder(orderId)}
+                          >
+                            拒绝
+                          </button>
+                        </div>
+                      )}
+                      {showBuyerConfirm && orderId && (
+                        <div className="order-action-row">
+                          <button
+                            type="button"
+                            className="small"
+                            onClick={() => onBuyerConfirmOrder(orderId)}
+                          >
+                            确认完成交易
+                          </button>
+                        </div>
+                      )}
+                      <span className="muted">
+                        {new Date(m.createdAt).toLocaleTimeString("zh-CN")}
+                      </span>
+                    </div>
+                  );
+                })
               )}
             </div>
 
-            <footer className="messages-chat-input">
+            <footer
+              className={`messages-chat-input ${isSystemChat ? "system-chat-input" : ""}`}
+            >
+              {isSystemChat ? (
+                <p className="muted system-chat-hint">
+                  系统通知会话，请在此查看交易进度并使用消息中的按钮操作。
+                </p>
+              ) : (
+              <>
               <div className="messages-input-icons">
                 <button
                   className="icon-btn ghost"
@@ -1569,6 +1658,8 @@ export function MessagesTab(props: {
                   发送
                 </button>
               </div>
+              </>
+              )}
             </footer>
           </>
         ) : (

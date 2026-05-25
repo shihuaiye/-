@@ -69,6 +69,8 @@ export interface ProductMessage {
   createdAt: string;
 }
 
+export type OrderStatus = "in_progress" | "completed" | "cancelled";
+
 export interface Order {
   id: string;
   productId: string;
@@ -78,8 +80,20 @@ export interface Order {
   sellerId: string;
   sellerName: string;
   price: number;
-  status: "completed";
+  status: OrderStatus;
+  buyerConfirmed?: boolean;
+  sellerConfirmed?: boolean;
   createdAt: string;
   rating?: number;
   ratedAt?: string;
+}
+
+export interface SellerPublicProfile {
+  id: string;
+  username: string;
+  trustScore: number;
+  school: string;
+  publishedCount: number;
+  completedOrderCount: number;
+  products: Product[];
 }

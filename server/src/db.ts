@@ -5,7 +5,7 @@ const DB_CONFIG = {
   host: process.env.DB_HOST || "localhost",
   port: Number(process.env.DB_PORT) || 3306,
   user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "MINE818306mine",
+  password: process.env.DB_PASSWORD || "******",
   database: process.env.DB_NAME || "secondhand",
 };
 
@@ -87,7 +87,9 @@ CREATE TABLE IF NOT EXISTS orders (
   sellerId VARCHAR(64) NOT NULL,
   sellerName VARCHAR(64) NOT NULL,
   price DECIMAL(10,2) NOT NULL DEFAULT 0,
-  status ENUM('completed') NOT NULL DEFAULT 'completed',
+  status VARCHAR(32) NOT NULL DEFAULT 'in_progress',
+  buyerConfirmed TINYINT(1) NOT NULL DEFAULT 0,
+  sellerConfirmed TINYINT(1) NOT NULL DEFAULT 0,
   rating TINYINT UNSIGNED,
   ratedAt DATETIME,
   createdAt DATETIME NOT NULL,
@@ -139,6 +141,30 @@ export const initDb = async () => {
   } catch (error: any) {
     if (error?.code !== "ER_DUP_FIELDNAME") throw error;
   }
+  try {
+    await p.query(
+      "ALTER TABLE orders ADD COLUMN buyerConfirmed TINYINT(1) NOT NULL DEFAULT 0 AFTER status"
+    );
+  } catch (error: any) {
+    if (error?.code !== "ER_DUP_FIELDNAME") throw error;
+  }
+  try {
+    await p.query(
+      "ALTER TABLE orders ADD COLUMN sellerConfirmed TINYINT(1) NOT NULL DEFAULT 0 AFTER buyerConfirmed"
+    );
+  } catch (error: any) {
+    if (error?.code !== "ER_DUP_FIELDNAME") throw error;
+  }
+  try {
+    await p.query(
+      "ALTER TABLE orders MODIFY COLUMN status VARCHAR(32) NOT NULL DEFAULT 'in_progress'"
+    );
+  } catch (error: any) {
+    if (error?.code !== "ER_DUP_FIELDNAME") throw error;
+  }
+  await p.query(
+    "UPDATE orders SET buyerConfirmed = 1, sellerConfirmed = 1 WHERE status = 'completed'"
+  ).catch(() => undefined);
 
   const [rows] = await p.query<mysql.RowDataPacket[]>(
     "SELECT COUNT(*) AS cnt FROM users"
@@ -309,6 +335,7 @@ function rowToMessage(row: mysql.RowDataPacket): ProductMessage {
 }
 
 function rowToOrder(row: mysql.RowDataPacket): Order {
+  const status = row.status as Order["status"];
   return {
     id: row.id,
     productId: row.productId,
@@ -318,7 +345,10 @@ function rowToOrder(row: mysql.RowDataPacket): Order {
     sellerId: row.sellerId,
     sellerName: row.sellerName,
     price: Number(row.price),
-    status: row.status,
+    status:
+      status === "in_progress" || status === "cancelled" ? status : "completed",
+    buyerConfirmed: Boolean(row.buyerConfirmed),
+    sellerConfirmed: Boolean(row.sellerConfirmed),
     createdAt: new Date(row.createdAt).toISOString(),
     rating: row.rating != null ? Number(row.rating) : undefined,
     ratedAt: row.ratedAt ? new Date(row.ratedAt).toISOString() : undefined,
@@ -636,7 +666,7 @@ export const findOrdersByBuyerId = async (
 
 export const createOrder = async (order: Order): Promise<Order> => {
   await getPool().query(
-    "INSERT INTO orders (id, productId, productTitle, buyerId, buyerName, sellerId, sellerName, price, status, rating, ratedAt, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO orders (id, productId, productTitle, buyerId, buyerName, sellerId, sellerName, price, status, buyerConfirmed, sellerConfirmed, rating, ratedAt, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       order.id,
       order.productId,
@@ -647,12 +677,61 @@ export const createOrder = async (order: Order): Promise<Order> => {
       order.sellerName,
       order.price,
       order.status,
+      order.buyerConfirmed ? 1 : 0,
+      order.sellerConfirmed ? 1 : 0,
       order.rating ?? null,
       order.ratedAt ? new Date(order.ratedAt) : null,
       new Date(order.createdAt),
     ]
   );
   return order;
+};
+
+export const updateOrder = async (
+  id: string,
+  fields: Partial<{
+    status: Order["status"];
+    buyerConfirmed: boolean;
+    sellerConfirmed: boolean;
+  }>
+): Promise<void> => {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  if (fields.status !== undefined) {
+    sets.push("status = ?");
+    values.push(fields.status);
+  }
+  if (fields.buyerConfirmed !== undefined) {
+    sets.push("buyerConfirmed = ?");
+    values.push(fields.buyerConfirmed ? 1 : 0);
+  }
+  if (fields.sellerConfirmed !== undefined) {
+    sets.push("sellerConfirmed = ?");
+    values.push(fields.sellerConfirmed ? 1 : 0);
+  }
+  if (sets.length === 0) return;
+  values.push(id);
+  await getPool().query(`UPDATE orders SET ${sets.join(", ")} WHERE id = ?`, values);
+};
+
+export const findInProgressOrderByProductId = async (
+  productId: string
+): Promise<Order | null> => {
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT * FROM orders WHERE productId = ? AND status = 'in_progress' LIMIT 1",
+    [productId]
+  );
+  return rows.length > 0 ? rowToOrder(rows[0]) : null;
+};
+
+export const countCompletedOrdersBySellerId = async (
+  sellerId: string
+): Promise<number> => {
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT COUNT(*) AS cnt FROM orders WHERE sellerId = ? AND status = 'completed'",
+    [sellerId]
+  );
+  return Number(rows[0]?.cnt || 0);
 };
 
 export const updateOrderRating = async (

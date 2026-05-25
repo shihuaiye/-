@@ -5,6 +5,7 @@ import type {
   ProductMessage,
   ProfileStats,
   Role,
+  SellerPublicProfile,
   User,
 } from "../types";
 
@@ -188,6 +189,21 @@ export const api = {
   },
   orders: {
     list: (headers: HeadersInit) => request<Order[]>("/orders", { headers }),
+    sellerConfirm: (id: string, headers: HeadersInit) =>
+      request<{ order: Order; product: Product }>(`/orders/${id}/seller-confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+      }),
+    sellerReject: (id: string, headers: HeadersInit) =>
+      request<{ order: Order; product: Product }>(`/orders/${id}/seller-reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+      }),
+    buyerConfirm: (id: string, headers: HeadersInit) =>
+      request<{ order: Order; product: Product }>(`/orders/${id}/buyer-confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+      }),
     rate: (id: string, rating: number, headers: HeadersInit) =>
       request<Order>(`/orders/${id}/rate`, {
         method: "POST",
@@ -198,6 +214,8 @@ export const api = {
   profile: {
     stats: (headers: HeadersInit) =>
       request<ProfileStats>("/profile/stats", { headers }),
+    seller: (id: string, headers: HeadersInit) =>
+      request<SellerPublicProfile>(`/users/${id}/profile`, { headers }),
   },
   recommendations: {
     list: (headers: HeadersInit) =>

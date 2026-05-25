@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppSidebar } from "./components/AppSidebar.tsx";
 import { AuthView } from "./components/AuthView.tsx";
-import { AccountDetailModal, ProductDetailModal, RatingModal, EditProductModal } from "./components/modals.tsx";
+import {
+  AccountDetailModal,
+  ProductDetailModal,
+  RatingModal,
+  EditProductModal,
+  SellerProfileModal,
+} from "./components/modals.tsx";
 import {
   AccountsTab,
   CartTab,
@@ -21,10 +27,12 @@ import type {
   PublishForm,
   ProfileStats,
   Role,
+  SellerPublicProfile,
   Status,
   Tab,
   User,
 } from "./types";
+import { SYSTEM_USER_ID } from "./types";
 import { PAGE_SIZE, distanceKm, passwordStrength, toBase64, getProductLocation, PRESET_LOCATIONS } from "./utils.ts";
 
 export function App() {
@@ -75,6 +83,10 @@ export function App() {
   } | null>(null);
   const [accountDetail, setAccountDetail] = useState<User | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [sellerProfile, setSellerProfile] = useState<SellerPublicProfile | null>(
+    null,
+  );
+  const [sellerProfileLoading, setSellerProfileLoading] = useState(false);
   const [accountForm, setAccountForm] = useState({
     username: "",
     password: "",
@@ -528,26 +540,80 @@ export function App() {
     await Promise.all([loadMine(), loadMarket(), loadAllForAdmin()]);
   };
 
+  const refreshAfterOrderChange = () =>
+    Promise.all([
+      loadMarket(),
+      loadMine(),
+      loadOrders(),
+      loadConversations(),
+      loadAllForAdmin(),
+      chatTarget ? loadChatMessages(chatTarget.userId) : Promise.resolve(),
+    ]).catch(console.error);
+
+  const openSystemChat = async () => {
+    const systemTarget: Conversation = {
+      userId: SYSTEM_USER_ID,
+      username: "系统通知",
+      lastMessage: "",
+      lastTime: new Date().toISOString(),
+      unreadCount: 0,
+      isSystem: true,
+    };
+    setActiveTab("messages");
+    await openChat(systemTarget);
+  };
+
   const buyFromCart = async (product: Product) => {
     if (!user) return;
     if (product.sellerId === user.id) {
       alert("不能购买自己发布的商品");
       return;
     }
-    if (!confirm(`确认购买 "${product.title}" 吗？`)) return;
+    if (!confirm(`确认购买「${product.title}」吗？`)) return;
     const json = await api.products.purchase(product.id, authHeaders());
     if (!json.success) return alert(json.message);
-    alert("下单成功，交易已完成");
-    setPendingRatingOrder(json.data.order);
+    alert("下单成功，已通知卖家确认，请在系统通知或订单列表查看进度");
     toggleCart(product.id);
-    void Promise.all([
-      loadMarket(),
-      loadMine(),
-      loadOrders(),
-      loadAllForAdmin(),
-    ]).catch((error) => {
-      console.error("refresh after purchase failed", error);
-    });
+    await refreshAfterOrderChange();
+    await openSystemChat();
+  };
+
+  const handleSellerConfirmOrder = async (orderId: string) => {
+    const json = await api.orders.sellerConfirm(orderId, authHeaders());
+    if (!json.success) return alert(json.message);
+    alert(
+      json.data.order.status === "completed"
+        ? "交易已完成"
+        : "已确认，系统已通知买家",
+    );
+    await refreshAfterOrderChange();
+  };
+
+  const handleSellerRejectOrder = async (orderId: string) => {
+    if (!confirm("确定拒绝该笔交易吗？")) return;
+    const json = await api.orders.sellerReject(orderId, authHeaders());
+    if (!json.success) return alert(json.message);
+    alert("已拒绝交易");
+    await refreshAfterOrderChange();
+  };
+
+  const handleBuyerConfirmOrder = async (orderId: string) => {
+    const json = await api.orders.buyerConfirm(orderId, authHeaders());
+    if (!json.success) return alert(json.message);
+    alert("交易已完成");
+    if (json.data.order.buyerId === user?.id) {
+      setPendingRatingOrder(json.data.order);
+    }
+    await refreshAfterOrderChange();
+  };
+
+  const openSellerProfile = async (sellerId: string) => {
+    if (sellerId === user?.id) return;
+    setSellerProfileLoading(true);
+    const json = await api.profile.seller(sellerId, authHeaders());
+    setSellerProfileLoading(false);
+    if (!json.success) return alert(json.message);
+    setSellerProfile(json.data);
   };
 
   const loadOrders = async () => {
@@ -877,6 +943,10 @@ export function App() {
               setChatImageFile={setChatImageFile}
               sendChatMessage={sendChatMessage}
               buyNow={buyFromCart}
+              orders={orders}
+              onSellerConfirmOrder={handleSellerConfirmOrder}
+              onSellerRejectOrder={handleSellerRejectOrder}
+              onBuyerConfirmOrder={handleBuyerConfirmOrder}
             />
           )}
         </div>
@@ -893,6 +963,17 @@ export function App() {
         messageInput={messageInput}
         setMessageInput={setMessageInput}
         sendMessage={sendMessage}
+        onSellerClick={(sellerId) => openSellerProfile(sellerId)}
+      />
+
+      <SellerProfileModal
+        profile={sellerProfile}
+        loading={sellerProfileLoading}
+        onClose={() => setSellerProfile(null)}
+        onViewProduct={(id) => {
+          setSellerProfile(null);
+          loadDetail(id);
+        }}
       />
 
       <AccountDetailModal

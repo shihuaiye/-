@@ -59,7 +59,10 @@ export type Conversation = {
   lastTime: string;
   unreadCount: number;
   productId?: string;
+  isSystem?: boolean;
 };
+
+export type OrderStatus = "in_progress" | "completed" | "cancelled";
 
 export type Order = {
   id: string;
@@ -70,11 +73,25 @@ export type Order = {
   sellerId: string;
   sellerName: string;
   price: number;
-  status: "completed";
+  status: OrderStatus;
+  buyerConfirmed?: boolean;
+  sellerConfirmed?: boolean;
   createdAt: string;
   rating?: number;
   ratedAt?: string;
 };
+
+export type SellerPublicProfile = {
+  id: string;
+  username: string;
+  trustScore: number;
+  school: string;
+  publishedCount: number;
+  completedOrderCount: number;
+  products: Product[];
+};
+
+export const SYSTEM_USER_ID = "system";
 
 export type ProfileStats = {
   trustScore: number;

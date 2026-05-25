@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
-import type { Conversation, Order, Product, ProductMessage, Role, User } from "../types";
+import type {
+  Conversation,
+  Order,
+  Product,
+  ProductMessage,
+  Role,
+  SellerPublicProfile,
+  User,
+} from "../types";
 
 export function EditProductModal(props: {
   product: Product | null;
@@ -284,6 +292,7 @@ export function ProductDetailModal(props: {
   messageInput: string;
   setMessageInput: (value: string) => void;
   sendMessage: () => void;
+  onSellerClick: (sellerId: string) => void;
 }) {
   const {
     detail,
@@ -296,6 +305,7 @@ export function ProductDetailModal(props: {
     messageInput,
     setMessageInput,
     sendMessage,
+    onSellerClick,
   } = props;
   if (!detail) return null;
   return (
@@ -310,7 +320,20 @@ export function ProductDetailModal(props: {
         <p>{detail.description}</p>
         <p><b>价格：</b>¥{detail.price}</p>
         <p><b>地点：</b>{detail.campus}</p>
-        <p><b>卖家：</b>{detail.sellerName}</p>
+        <p>
+          <b>卖家：</b>
+          {detail.sellerId !== user?.id ? (
+            <button
+              type="button"
+              className="link-btn"
+              onClick={() => onSellerClick(detail.sellerId)}
+            >
+              {detail.sellerName}
+            </button>
+          ) : (
+            detail.sellerName
+          )}
+        </p>
         <p><b>发布时间：</b>{new Date(detail.createdAt).toLocaleString("zh-CN")}</p>
         {detail.category === "digital" && (
           <p><b>规格：</b>{detail.brand} / {detail.model} / {detail.memory}</p>
@@ -365,6 +388,70 @@ export function ProductDetailModal(props: {
           />
           <button onClick={sendMessage}>发送</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+export function SellerProfileModal(props: {
+  profile: SellerPublicProfile | null;
+  loading: boolean;
+  onClose: () => void;
+  onViewProduct: (productId: string) => void;
+}) {
+  const { profile, loading, onClose, onViewProduct } = props;
+  if (!profile && !loading) return null;
+
+  return (
+    <div className="modal-mask" onClick={onClose}>
+      <div
+        className="seller-profile-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          className="seller-profile-close"
+          onClick={onClose}
+          aria-label="关闭"
+        >
+          ×
+        </button>
+        {loading ? (
+          <p className="muted">加载中...</p>
+        ) : profile ? (
+          <>
+            <h3>{profile.username}</h3>
+            <div className="seller-profile-stats">
+              <span>诚信分：{profile.trustScore.toFixed(1)}</span>
+              <span>学校：{profile.school}</span>
+              <span>已发布：{profile.publishedCount}</span>
+              <span>成交订单：{profile.completedOrderCount}</span>
+            </div>
+            <h4 className="seller-profile-list-title">在售商品</h4>
+            {profile.products.length === 0 ? (
+              <p className="muted">暂无在售商品</p>
+            ) : (
+              <div className="seller-profile-products">
+                {profile.products.map((p) => (
+                  <div key={p.id} className="seller-profile-product-item">
+                    <img src={p.images?.[0]} alt={p.title} />
+                    <div className="seller-profile-product-main">
+                      <b>{p.title}</b>
+                      <span>¥{p.price}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="small"
+                      onClick={() => onViewProduct(p.id)}
+                    >
+                      查看详情
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        ) : null}
       </div>
     </div>
   );
