@@ -5,7 +5,7 @@ const DB_CONFIG = {
   host: process.env.DB_HOST || "localhost",
   port: Number(process.env.DB_PORT) || 3306,
   user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "200508140086",
+  password: process.env.DB_PASSWORD || "zsh123456",
   database: process.env.DB_NAME || "secondhand",
 };
 
@@ -88,9 +88,22 @@ CREATE TABLE IF NOT EXISTS orders (
   sellerName VARCHAR(64) NOT NULL,
   price DECIMAL(10,2) NOT NULL DEFAULT 0,
   status ENUM('completed') NOT NULL DEFAULT 'completed',
+  rating TINYINT UNSIGNED,
+  ratedAt DATETIME,
   createdAt DATETIME NOT NULL,
   INDEX idx_buyerId (buyerId),
   INDEX idx_sellerId (sellerId)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+`;
+
+const CREATE_FAVORITES_TABLE = `
+CREATE TABLE IF NOT EXISTS favorites (
+  userId VARCHAR(64) NOT NULL,
+  productId VARCHAR(64) NOT NULL,
+  createdAt DATETIME NOT NULL,
+  PRIMARY KEY (userId, productId),
+  INDEX idx_favorites_userId (userId),
+  INDEX idx_favorites_productId (productId)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 `;
 
@@ -114,6 +127,18 @@ export const initDb = async () => {
   await p.query(CREATE_PRODUCTS_TABLE);
   await p.query(CREATE_MESSAGES_TABLE);
   await p.query(CREATE_ORDERS_TABLE);
+  await p.query(CREATE_FAVORITES_TABLE);
+
+  try {
+    await p.query("ALTER TABLE orders ADD COLUMN rating TINYINT UNSIGNED NULL AFTER status");
+  } catch (error: any) {
+    if (error?.code !== "ER_DUP_FIELDNAME") throw error;
+  }
+  try {
+    await p.query("ALTER TABLE orders ADD COLUMN ratedAt DATETIME NULL AFTER rating");
+  } catch (error: any) {
+    if (error?.code !== "ER_DUP_FIELDNAME") throw error;
+  }
 
   const [rows] = await p.query<mysql.RowDataPacket[]>(
     "SELECT COUNT(*) AS cnt FROM users"
@@ -295,6 +320,8 @@ function rowToOrder(row: mysql.RowDataPacket): Order {
     price: Number(row.price),
     status: row.status,
     createdAt: new Date(row.createdAt).toISOString(),
+    rating: row.rating != null ? Number(row.rating) : undefined,
+    ratedAt: row.ratedAt ? new Date(row.ratedAt).toISOString() : undefined,
   };
 }
 
@@ -372,6 +399,14 @@ export const updateUser = async (
 
 export const deleteUser = async (id: string): Promise<void> => {
   await getPool().query("DELETE FROM users WHERE id = ?", [id]);
+};
+
+export const findOrderById = async (id: string): Promise<Order | null> => {
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT * FROM orders WHERE id = ?",
+    [id]
+  );
+  return rows.length > 0 ? rowToOrder(rows[0]) : null;
 };
 
 export const readProducts = async (): Promise<Product[]> => {
@@ -557,7 +592,7 @@ export const findOrdersByBuyerId = async (
 
 export const createOrder = async (order: Order): Promise<Order> => {
   await getPool().query(
-    "INSERT INTO orders (id, productId, productTitle, buyerId, buyerName, sellerId, sellerName, price, status, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO orders (id, productId, productTitle, buyerId, buyerName, sellerId, sellerName, price, status, rating, ratedAt, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       order.id,
       order.productId,
@@ -568,8 +603,85 @@ export const createOrder = async (order: Order): Promise<Order> => {
       order.sellerName,
       order.price,
       order.status,
+      order.rating ?? null,
+      order.ratedAt ? new Date(order.ratedAt) : null,
       new Date(order.createdAt),
     ]
   );
   return order;
+};
+
+export const updateOrderRating = async (
+  orderId: string,
+  buyerId: string,
+  rating: number,
+): Promise<Order | null> => {
+  await getPool().query(
+    "UPDATE orders SET rating = ?, ratedAt = ? WHERE id = ? AND buyerId = ?",
+    [rating, new Date(), orderId, buyerId]
+  );
+  return findOrderById(orderId);
+};
+
+export const findOrdersBySellerId = async (
+  sellerId: string
+): Promise<Order[]> => {
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT * FROM orders WHERE sellerId = ? ORDER BY createdAt DESC",
+    [sellerId]
+  );
+  return rows.map(rowToOrder);
+};
+
+export const findFavoriteProductIdsByUserId = async (
+  userId: string
+): Promise<string[]> => {
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT productId FROM favorites WHERE userId = ? ORDER BY createdAt DESC",
+    [userId]
+  );
+  return rows.map((row) => row.productId);
+};
+
+export const toggleFavoriteProduct = async (
+  userId: string,
+  productId: string
+): Promise<{ liked: boolean }> => {
+  const [rows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT 1 AS existsFlag FROM favorites WHERE userId = ? AND productId = ?",
+    [userId, productId]
+  );
+  if (rows.length > 0) {
+    await getPool().query(
+      "DELETE FROM favorites WHERE userId = ? AND productId = ?",
+      [userId, productId]
+    );
+    return { liked: false };
+  }
+  await getPool().query(
+    "INSERT INTO favorites (userId, productId, createdAt) VALUES (?, ?, ?)",
+    [userId, productId, new Date()]
+  );
+  return { liked: true };
+};
+
+export const getProfileStats = async (
+  userId: string
+): Promise<{ trustScore: number; likesCount: number; ratingCount: number }> => {
+  const [ratingRows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT AVG(rating) AS avgRating, COUNT(rating) AS ratingCount FROM orders WHERE sellerId = ? AND rating IS NOT NULL",
+    [userId]
+  );
+  const [likeRows] = await getPool().query<mysql.RowDataPacket[]>(
+    "SELECT COUNT(*) AS likesCount FROM favorites f INNER JOIN products p ON p.id = f.productId WHERE p.sellerId = ?",
+    [userId]
+  );
+  const avgRating = Number(ratingRows[0]?.avgRating || 0);
+  const ratingCount = Number(ratingRows[0]?.ratingCount || 0);
+  const likesCount = Number(likeRows[0]?.likesCount || 0);
+  return {
+    trustScore: ratingCount > 0 ? Math.round(avgRating * 10) / 10 : 0,
+    likesCount,
+    ratingCount,
+  };
 };

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { AppSidebar } from "./components/AppSidebar";
-import { AuthView } from "./components/AuthView";
-import { AccountDetailModal, ProductDetailModal } from "./components/modals";
+import { AppSidebar } from "./components/AppSidebar.tsx";
+import { AuthView } from "./components/AuthView.tsx";
+import { AccountDetailModal, ProductDetailModal, RatingModal } from "./components/modals.tsx";
 import {
   AccountsTab,
   CartTab,
@@ -10,9 +10,9 @@ import {
   MessagesTab,
   PostProfileTab,
   PostPublishTab,
-} from "./components/tabs";
-import { PRESET_LOCATIONS } from "./constants/locations";
-import { api } from "./services/api";
+} from "./components/tabs.tsx";
+import { PRESET_LOCATIONS } from "./constants/locations.ts";
+import { api } from "./services/api.ts";
 import type {
   Category,
   Conversation,
@@ -20,12 +20,13 @@ import type {
   Product,
   ProductMessage,
   PublishForm,
+  ProfileStats,
   Role,
   Status,
   Tab,
   User,
 } from "./types";
-import { PAGE_SIZE, distanceKm, passwordStrength, toBase64 } from "./utils";
+import { PAGE_SIZE, distanceKm, passwordStrength, toBase64 } from "./utils.ts";
 
 export function App() {
   const [token, setToken] = useState(localStorage.getItem("sh-token") || "");
@@ -48,7 +49,7 @@ export function App() {
   const [categoryFilter, setCategoryFilter] = useState<Category | "all">("all");
   const [sortBy, setSortBy] = useState<
     "default" | "distance" | "price-asc" | "price-desc" | "time"
-  >("distance");
+  >("time");
   const [page, setPage] = useState(1);
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -62,6 +63,12 @@ export function App() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [myPurchases, setMyPurchases] = useState<Order[]>([]);
   const [mySales, setMySales] = useState<Order[]>([]);
+  const [profileStats, setProfileStats] = useState<ProfileStats>({
+    trustScore: 0,
+    likesCount: 0,
+    ratingCount: 0,
+  });
+  const [pendingRatingOrder, setPendingRatingOrder] = useState<Order | null>(null);
   const [recommendations, setRecommendations] = useState<Product[]>([]);
   const [userLocation, setUserLocation] = useState<{
     latitude: number;
@@ -337,12 +344,33 @@ export function App() {
     setPublishForm((prev) => ({ ...prev, images }));
   };
 
-  const toggleFavorite = (id: string) => {
-    const next = favorites.includes(id)
-      ? favorites.filter((x) => x !== id)
-      : [...favorites, id];
-    setFavorites(next);
-    localStorage.setItem(favoritesKey, JSON.stringify(next));
+  const loadFavorites = async () => {
+    if (!token || !user) return;
+    const json = await api.favorites.list(authHeaders());
+    if (json.success) {
+      setFavorites(json.data);
+      localStorage.setItem(favoritesKey, JSON.stringify(json.data));
+    }
+  };
+
+  const loadProfileStats = async () => {
+    if (!token || !user) return;
+    const json = await api.profile.stats(authHeaders());
+    if (json.success) setProfileStats(json.data);
+  };
+
+  const toggleFavorite = async (id: string) => {
+    if (!token || !user) {
+      const next = favorites.includes(id)
+        ? favorites.filter((x) => x !== id)
+        : [...favorites, id];
+      setFavorites(next);
+      localStorage.setItem(favoritesKey, JSON.stringify(next));
+      return;
+    }
+    const json = await api.favorites.toggle(id, authHeaders());
+    if (!json.success) return alert(json.message);
+    await loadFavorites();
   };
 
   const toggleCart = (id: string) => {
@@ -439,6 +467,8 @@ export function App() {
       loadConversations().catch(console.error);
       loadOrders().catch(console.error);
       loadRecommendations().catch(console.error);
+      loadFavorites().catch(console.error);
+      loadProfileStats().catch(console.error);
       if (detail) {
         loadDetail(detail.id).catch(console.error);
       }
@@ -497,13 +527,16 @@ export function App() {
     const json = await api.products.purchase(product.id, authHeaders());
     if (!json.success) return alert(json.message);
     alert("下单成功，交易已完成");
+    setPendingRatingOrder(json.data.order);
     toggleCart(product.id);
-    await Promise.all([
+    void Promise.all([
       loadMarket(),
       loadMine(),
       loadOrders(),
       loadAllForAdmin(),
-    ]);
+    ]).catch((error) => {
+      console.error("refresh after purchase failed", error);
+    });
   };
 
   const loadOrders = async () => {
@@ -514,6 +547,14 @@ export function App() {
       setMyPurchases(json.data.filter((o: Order) => o.buyerId === user!.id));
       setMySales(json.data.filter((o: Order) => o.sellerId === user!.id));
     }
+  };
+
+  const rateOrder = async (order: Order, rating: number) => {
+    const json = await api.orders.rate(order.id, rating, authHeaders());
+    if (!json.success) return alert(json.message);
+    alert("评分提交成功");
+    setPendingRatingOrder(null);
+    await Promise.all([loadOrders(), loadProfileStats()]);
   };
 
   const loadRecommendations = async () => {
@@ -529,7 +570,14 @@ export function App() {
     setToken("");
     setUser(null);
     setDetail(null);
+    setFavorites([]);
     setCart([]);
+    setProfileStats({
+      trustScore: 0,
+      likesCount: 0,
+      ratingCount: 0,
+    });
+    setPendingRatingOrder(null);
   };
 
   const filteredMarket = useMemo(() => {
@@ -602,6 +650,8 @@ export function App() {
     loadConversations().catch(console.error);
     loadOrders().catch(console.error);
     loadRecommendations().catch(console.error);
+    loadFavorites().catch(console.error);
+    loadProfileStats().catch(console.error);
     if (user.role === "admin") {
       loadAllForAdmin().catch(console.error);
       loadUsers().catch(console.error);
@@ -757,6 +807,8 @@ export function App() {
               loadDetail={loadDetail}
               mySales={mySales}
               myPurchases={myPurchases}
+              profileStats={profileStats}
+              onRateOrder={setPendingRatingOrder}
             />
           )}
 
@@ -831,6 +883,15 @@ export function App() {
         setAccountForm={setAccountForm}
         setAccountDetail={setAccountDetail}
         saveAccountDetail={saveAccountDetail}
+      />
+
+      <RatingModal
+        order={pendingRatingOrder}
+        onClose={() => setPendingRatingOrder(null)}
+        onSubmit={(rating) => {
+          if (!pendingRatingOrder) return;
+          return rateOrder(pendingRatingOrder, rating);
+        }}
       />
     </div>
   );

@@ -1,4 +1,5 @@
-import type { Conversation, Product, ProductMessage, Role, User } from "../types";
+import { useEffect, useState } from "react";
+import type { Conversation, Order, Product, ProductMessage, Role, User } from "../types";
 
 export function AccountDetailModal(props: {
   accountDetail: User | null;
@@ -169,6 +170,60 @@ export function ProductDetailModal(props: {
             onChange={(e) => setMessageInput(e.target.value)}
           />
           <button onClick={sendMessage}>发送</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function RatingModal(props: {
+  order: Order | null;
+  onClose: () => void;
+  onSubmit: (rating: number) => void | Promise<void>;
+}) {
+  const { order, onClose, onSubmit } = props;
+  const [rating, setRating] = useState(10);
+
+  useEffect(() => {
+    if (order) {
+      setRating(order.rating ?? 10);
+    }
+  }, [order]);
+
+  if (!order) return null;
+
+  return (
+    <div className="modal-mask" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <h3>给卖家打分</h3>
+        <p className="muted">订单：{order.productTitle}</p>
+        <p className="muted">卖家：{order.sellerName}</p>
+        <div className="rating-stars" style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "16px 0" }}>
+          {Array.from({ length: 10 }, (_, index) => index + 1).map((star) => (
+            <button
+              key={star}
+              type="button"
+              className={rating >= star ? "rating-star active" : "rating-star"}
+              onClick={() => setRating(star)}
+              style={{
+                minWidth: 40,
+                minHeight: 40,
+                borderRadius: 12,
+                border: "1px solid #dbe3f1",
+                background: rating >= star ? "#facc15" : "#f8fafc",
+                color: rating >= star ? "#1f2937" : "#64748b",
+                fontWeight: 700,
+              }}
+            >
+              ★ {star}
+            </button>
+          ))}
+        </div>
+        <div className="row">
+          <button onClick={() => onSubmit(rating)}>提交评分</button>
+          <button className="ghost" onClick={onClose}>
+            稍后再评
+          </button>
         </div>
       </div>
     </div>

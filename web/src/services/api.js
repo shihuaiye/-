@@ -81,6 +81,11 @@ export const api = {
     },
     orders: {
         list: (headers) => request("/orders", { headers }),
+        rate: (id, rating, headers) => request(`/orders/${id}/rate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...headers },
+            body: JSON.stringify({ rating }),
+        }),
     },
     recommendations: {
         list: (headers) => request("/recommendations", { headers }),
