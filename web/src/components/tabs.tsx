@@ -77,32 +77,18 @@ export function MarketTab(props: {
 
       <section className="market-filter-section">
         <div className="filter-bar">
-          <div className="search-row">
-            <div className="search-input-wrapper">
-              <span className="search-icon">🔍</span>
-              <input
-                className="search-input"
-                placeholder="搜索商品名称、描述..."
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") setPage(() => 1);
-                }}
-              />
-              {keyword && (
-                <button
-                  className="search-clear"
-                  onClick={() => {
-                    setKeyword("");
-                    setPage(() => 1);
-                  }}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
+          <div className="search-box market-search">
+            <input
+              placeholder="搜索商品名称、描述..."
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") setPage(() => 1);
+              }}
+            />
             <button
-              className="search-submit-btn"
+              type="button"
+              className="search-btn"
               onClick={() => setPage(() => 1)}
             >
               搜索
@@ -382,15 +368,16 @@ export function MineTab(props: {
         />
         <div className="row">
           <input
-            type="number"
-            placeholder="价格"
+            type="text"
+            inputMode="decimal"
+            placeholder="请输入价格"
             value={publishForm.price}
-            onChange={(e) =>
-              setPublishForm({
-                ...publishForm,
-                price: Number(e.target.value),
-              })
-            }
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "" || /^\d+(\.\d{0,2})?$/.test(v)) {
+                setPublishForm({ ...publishForm, price: v });
+              }
+            }}
           />
           <input
             placeholder="交易地点/校区"
@@ -695,18 +682,19 @@ export function PostPublishTab(props: {
               />
             </div>
             <div>
-              <label className="field-label">期望售价（¥）</label>
+              <label className="field-label">价格（¥）</label>
               <input
                 className="field-input"
-                type="number"
-                placeholder="0.00"
+                type="text"
+                inputMode="decimal"
+                placeholder="请输入价格"
                 value={publishForm.price}
-                onChange={(e) =>
-                  setPublishForm({
-                    ...publishForm,
-                    price: Number(e.target.value),
-                  })
-                }
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "" || /^\d+(\.\d{0,2})?$/.test(v)) {
+                    setPublishForm({ ...publishForm, price: v });
+                  }
+                }}
               />
             </div>
             <div>
@@ -877,7 +865,6 @@ export function PostProfileTab(props: {
   };
 
   const avatarText = user.username?.slice(0, 1).toUpperCase() || "U";
-  const verifiedText = user.status === "active" ? "已认证学生" : "待审核";
 
   return (
     <section className="profile-section">
@@ -888,7 +875,6 @@ export function PostProfileTab(props: {
         <div className="profile-info">
           <div className="profile-name-row">
             <h2 className="profile-name">{user.username}</h2>
-            <span className="profile-badge">{verifiedText}</span>
           </div>
           <div className="profile-detail-row">
             <div className="profile-detail-pill">诚信分：{profileStats.trustScore.toFixed(1)}</div>
@@ -1090,12 +1076,6 @@ export function CartTab(props: {
               <div className="product-body">
                 <div className="product-title-row">
                   <h4>{p.title}</h4>
-                  <button
-                    className="small fav danger"
-                    onClick={() => toggleFavorite(p.id)}
-                  >
-                    移除
-                  </button>
                 </div>
                 <p className="muted product-description">
                   {p.description.slice(0, 96)}...
@@ -1116,6 +1096,12 @@ export function CartTab(props: {
                     onClick={() => buyNow(p)}
                   >
                     购买
+                  </button>
+                  <button
+                    className="small action-btn remove-btn"
+                    onClick={() => toggleFavorite(p.id)}
+                  >
+                    移除
                   </button>
                 </div>
               </div>

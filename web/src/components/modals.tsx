@@ -279,7 +279,6 @@ export function ProductDetailModal(props: {
   favorites: string[];
   toggleFavorite: (id: string) => void;
   user: User;
-  contactSeller: () => void;
   messages: ProductMessage[];
   setMessageImageFile: (value: File | null) => void;
   messageInput: string;
@@ -292,7 +291,6 @@ export function ProductDetailModal(props: {
     favorites,
     toggleFavorite,
     user,
-    contactSeller,
     messages,
     setMessageImageFile,
     messageInput,
@@ -324,15 +322,10 @@ export function ProductDetailModal(props: {
           >
             {favorites.includes(detail.id) ? "取消收藏" : "收藏商品"}
           </button>
-          {detail.sellerId !== user?.id && (
-            <button className="small contact-seller-btn" onClick={contactSeller}>
-              💬 联系卖家
-            </button>
-          )}
           <button className="ghost" onClick={() => setDetail(null)}>关闭</button>
         </div>
         <hr style={{ border: "none", borderTop: "1px solid #e2e8f0", margin: "12px 0" }} />
-        <h4>联系卖家 / 留言</h4>
+        <h4>留言</h4>
         <div className="message-list">
           {messages.map((m) => (
             <div key={m.id} className="message-item">

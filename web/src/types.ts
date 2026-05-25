@@ -85,7 +85,7 @@ export type ProfileStats = {
 export type PublishForm = {
   title: string;
   description: string;
-  price: number;
+  price: string;
   category: Category;
   images: string[];
   school: string;

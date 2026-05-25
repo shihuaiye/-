@@ -93,7 +93,7 @@ export function App() {
   const [publishForm, setPublishForm] = useState<PublishForm>({
     title: "",
     description: "",
-    price: 0,
+    price: "",
     category: "daily" as Category,
     images: [] as string[],
     school: "武汉大学",
@@ -218,11 +218,16 @@ export function App() {
       alert("请填写商品描述");
       return;
     }
+    const priceNum = Number(publishForm.price);
+    if (!publishForm.price.trim() || !Number.isFinite(priceNum) || priceNum <= 0) {
+      alert("请填写有效价格");
+      return;
+    }
     try {
       const payload = {
         title: publishForm.title,
         description: publishForm.description,
-        price: Number(publishForm.price),
+        price: priceNum,
         category: publishForm.category,
         images: publishForm.images,
         campus: `${publishForm.school}${publishForm.schoolDetail ? ` · ${publishForm.schoolDetail}` : ""}`,
@@ -243,7 +248,7 @@ export function App() {
       setPublishForm({
         title: "",
         description: "",
-        price: 0,
+        price: "",
         category: "daily",
         images: [],
         school: "武汉大学",
@@ -485,24 +490,6 @@ export function App() {
     }, 5000);
     return () => window.clearInterval(timer);
   }, [token, user, detail?.id, chatTarget?.userId]);
-
-  const contactSeller = async () => {
-    if (!detail || !user) return;
-    if (detail.sellerId === user.id) {
-      alert("这是您自己发布的商品，无需联系卖家");
-      return;
-    }
-    setRelatedProduct(detail);
-    const targetConv: Conversation = {
-      userId: detail.sellerId,
-      username: detail.sellerName,
-      lastMessage: "",
-      lastTime: new Date().toISOString(),
-      unreadCount: 0,
-      productId: detail.id,
-    };
-    await openChat(targetConv);
-  };
 
   const markAsSold = async (product: Product) => {
     if (!confirm(`确认将"${product.title}"标记为已售出？`)) return;
@@ -901,7 +888,6 @@ export function App() {
         favorites={favorites}
         toggleFavorite={toggleFavorite}
         user={user}
-        contactSeller={contactSeller}
         messages={messages}
         setMessageImageFile={setMessageImageFile}
         messageInput={messageInput}
