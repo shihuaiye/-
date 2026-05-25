@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { adminOnly, auth } from "./auth.js";
-import { initDb, newId, readUsers, findUserById, findUserByUsername, createUser, updateUser, deleteUser, readProducts, findProductById, findProductsBySellerId, findApprovedProducts, createProduct, updateProduct, deleteProduct, findMessagesByProductId, findMessagesByUserId, findConversationMessages, createMessage, readOrders, findOrdersByUserId, findOrdersByBuyerId, createOrder, } from "./db.js";
+import { initDb, newId, readUsers, findUserById, findUserByUsername, createUser, updateUser, deleteUser, readProducts, findProductById, findProductsBySellerId, findApprovedProducts, createProduct, updateProduct, deleteProduct, findMessagesByProductId, findMessagesByUserId, findConversationMessages, createMessage, readOrders, findOrdersByUserId, findOrdersByBuyerId, createOrder, findOrderById, updateOrderRating, findFavoriteProductIdsByUserId, toggleFavoriteProduct, getProfileStats, } from "./db.js";
 export const router = Router();
 router.get("/health", async (_req, res) => {
     await initDb();
@@ -166,9 +166,73 @@ router.post("/products/:id/status", auth, adminOnly, async (req, res) => {
     product.updatedAt = new Date().toISOString();
     res.json({ success: true, data: product });
 });
+router.put("/products/:id", auth, async (req, res) => {
+    const product = await findProductById(req.params.id);
+    if (!product)
+        return res.status(404).json({ success: false, message: "商品不存在" });
+    if (product.sellerId !== req.userId && req.role !== "admin") {
+        return res.status(403).json({ success: false, message: "无权修改该商品" });
+    }
+    if (product.status === "sold") {
+        return res.status(400).json({ success: false, message: "已售出商品不可修改" });
+    }
+    const body = req.body;
+    const now = new Date().toISOString();
+    const updateFields = {
+        updatedAt: now,
+        status: "pending",
+        rejectionReason: undefined,
+    };
+    if (body.title !== undefined)
+        updateFields.title = body.title;
+    if (body.description !== undefined)
+        updateFields.description = body.description;
+    if (body.price !== undefined)
+        updateFields.price = Number(body.price);
+    if (body.category !== undefined)
+        updateFields.category = body.category;
+    if (body.images !== undefined)
+        updateFields.images = body.images;
+    if (body.campus !== undefined)
+        updateFields.campus = body.campus;
+    if (body.brand !== undefined)
+        updateFields.brand = body.brand;
+    if (body.model !== undefined)
+        updateFields.model = body.model;
+    if (body.memory !== undefined)
+        updateFields.memory = body.memory;
+    if (body.latitude !== undefined)
+        updateFields.latitude = body.latitude;
+    if (body.longitude !== undefined)
+        updateFields.longitude = body.longitude;
+    await updateProduct(product.id, updateFields);
+    const updatedProduct = await findProductById(product.id);
+    res.json({ success: true, data: updatedProduct });
+});
+router.delete("/products/:id", auth, async (req, res) => {
+    const product = await findProductById(req.params.id);
+    if (!product)
+        return res.status(404).json({ success: false, message: "商品不存在" });
+    if (product.sellerId !== req.userId && req.role !== "admin") {
+        return res.status(403).json({ success: false, message: "无权删除该商品" });
+    }
+    await deleteProduct(product.id);
+    res.json({ success: true, message: "商品已删除" });
+});
 router.get("/products/:id/messages", auth, async (req, res) => {
     const productMessages = await findMessagesByProductId(req.params.id);
     res.json({ success: true, data: productMessages });
+});
+router.get("/favorites", auth, async (req, res) => {
+    const favoriteProductIds = await findFavoriteProductIdsByUserId(req.userId);
+    res.json({ success: true, data: favoriteProductIds });
+});
+router.post("/products/:id/favorite", auth, async (req, res) => {
+    const product = await findProductById(req.params.id);
+    if (!product)
+        return res.status(404).json({ success: false, message: "商品不存在" });
+    const result = await toggleFavoriteProduct(req.userId, req.params.id);
+    res.json({ success: true, data: { productId: req.params.id, liked: result.liked } });
 });
 router.post("/products/:id/messages", auth, async (req, res) => {
     const content = String(req.body?.content || "").trim();
@@ -195,57 +259,6 @@ router.post("/products/:id/messages", auth, async (req, res) => {
     };
     await createMessage(newMessage);
     res.json({ success: true, data: newMessage });
-});
-router.put("/products/:id", auth, async (req, res) => {
-    const product = await findProductById(req.params.id);
-    if (!product) {
-        return res.status(404).json({ success: false, message: "商品不存在" });
-    }
-    if (product.sellerId !== req.userId && req.role !== "admin") {
-        return res.status(403).json({ success: false, message: "无权编辑该商品" });
-    }
-    const body = req.body;
-    const updates = {
-        updatedAt: new Date().toISOString(),
-    };
-    if (body.title !== undefined)
-        updates.title = body.title;
-    if (body.description !== undefined)
-        updates.description = body.description;
-    if (body.price !== undefined)
-        updates.price = body.price;
-    if (body.category !== undefined)
-        updates.category = body.category;
-    if (body.images !== undefined)
-        updates.images = JSON.stringify(body.images);
-    if (body.campus !== undefined)
-        updates.campus = body.campus;
-    if (body.brand !== undefined)
-        updates.brand = body.brand;
-    if (body.model !== undefined)
-        updates.model = body.model;
-    if (body.memory !== undefined)
-        updates.memory = body.memory;
-    if (body.latitude !== undefined)
-        updates.latitude = body.latitude;
-    if (body.longitude !== undefined)
-        updates.longitude = body.longitude;
-    updates.status = "pending";
-    updates.rejectionReason = null;
-    await updateProduct(product.id, updates);
-    const updated = await findProductById(product.id);
-    res.json({ success: true, data: updated });
-});
-router.delete("/products/:id", auth, async (req, res) => {
-    const product = await findProductById(req.params.id);
-    if (!product) {
-        return res.status(404).json({ success: false, message: "商品不存在" });
-    }
-    if (product.sellerId !== req.userId && req.role !== "admin") {
-        return res.status(403).json({ success: false, message: "无权删除该商品" });
-    }
-    await deleteProduct(product.id);
-    res.json({ success: true, message: "商品已删除" });
 });
 router.get("/conversations", auth, async (req, res) => {
     const messages = await findMessagesByUserId(req.userId);
@@ -442,6 +455,26 @@ router.post("/products/:id/purchase", auth, async (req, res) => {
     product.updatedAt = new Date().toISOString();
     res.json({ success: true, data: { product, order: newOrder } });
 });
+router.post("/orders/:id/rate", auth, async (req, res) => {
+    const rating = Number(req.body?.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 10) {
+        return res.status(400).json({ success: false, message: "评分必须是 1 到 10 之间的整数" });
+    }
+    const order = await findOrderById(req.params.id);
+    if (!order)
+        return res.status(404).json({ success: false, message: "订单不存在" });
+    if (order.buyerId !== req.userId) {
+        return res.status(403).json({ success: false, message: "只能评价自己的购买订单" });
+    }
+    if (order.rating !== undefined) {
+        return res.status(400).json({ success: false, message: "该订单已评价" });
+    }
+    const updated = await updateOrderRating(order.id, req.userId, rating);
+    if (!updated) {
+        return res.status(404).json({ success: false, message: "订单不存在" });
+    }
+    res.json({ success: true, data: updated });
+});
 router.delete("/admin/users/:id", auth, adminOnly, async (req, res) => {
     const target = await findUserById(req.params.id);
     if (!target)
@@ -462,6 +495,10 @@ router.get("/orders", auth, async (req, res) => {
     }
     const userOrders = await findOrdersByUserId(req.userId);
     res.json({ success: true, data: userOrders });
+});
+router.get("/profile/stats", auth, async (req, res) => {
+    const stats = await getProfileStats(req.userId);
+    res.json({ success: true, data: stats });
 });
 router.get("/recommendations", auth, async (req, res) => {
     const products = await readProducts();

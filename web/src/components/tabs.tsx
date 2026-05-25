@@ -11,8 +11,8 @@ import type {
   Status,
   User,
 } from "../types";
-import type { PresetLocation } from "../constants/locations";
-import { distanceKm } from "../utils.ts";
+import type { PresetLocation } from "../utils.ts";
+import { distanceKm, getProductLocation, PRESET_LOCATIONS } from "../utils.ts";
 
 export function MarketTab(props: {
   keyword: string;
@@ -191,13 +191,16 @@ export function MarketTab(props: {
                   <span className="product-time">
                     {new Date(p.createdAt).toLocaleDateString("zh-CN")}
                   </span>
-                  {userLocation && (
-                    <span className="product-distance">
-                      {Number.isFinite(distanceKm(userLocation, p))
-                        ? `${distanceKm(userLocation, p).toFixed(1)}km`
-                        : ""}
-                    </span>
-                  )}
+                  {userLocation && (() => {
+                    const loc = getProductLocation(p);
+                    if (!loc) return null;
+                    const dist = distanceKm(userLocation, loc);
+                    return (
+                      <span className="product-distance">
+                        {dist.toFixed(1)}km
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             </article>
@@ -753,7 +756,12 @@ export function PostPublishTab(props: {
                     publishForm.school === loc.label ? "chip active" : "chip"
                   }
                   onClick={() =>
-                    setPublishForm({ ...publishForm, school: loc.label })
+                    setPublishForm({
+                      ...publishForm,
+                      school: loc.label,
+                      latitude: loc.latitude,
+                      longitude: loc.longitude,
+                    })
                   }
                 >
                   {loc.campus}
@@ -837,8 +845,10 @@ export function PostProfileTab(props: {
   myPurchases: Order[];
   profileStats: ProfileStats;
   onRateOrder: (order: Order) => void;
+  onDeleteProduct: (product: Product) => void;
+  onEditProduct: (product: Product) => void;
 }) {
-  const { user, myProducts, markAsSold, loadDetail, mySales, myPurchases, profileStats, onRateOrder } =
+  const { user, myProducts, markAsSold, loadDetail, mySales, myPurchases, profileStats, onRateOrder, onDeleteProduct, onEditProduct } =
     props;
   const [profileTab, setProfileTab] = useState<"published" | "orders">(
     "published",
@@ -945,20 +955,38 @@ export function PostProfileTab(props: {
                     <span className="profile-product-price">¥{p.price}</span>
                     <span className="muted">{p.campus}</span>
                   </div>
+                  {p.status === "rejected" && p.rejectionReason && (
+                    <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 6, padding: 8, marginBottom: 8, fontSize: 13 }}>
+                      <span style={{ color: "#dc2626", fontWeight: 600 }}>拒绝原因：</span>
+                      <span style={{ color: "#64748b" }}>{p.rejectionReason}</span>
+                    </div>
+                  )}
                   <div className="profile-product-actions">
                     <button className="small" onClick={() => loadDetail(p.id)}>
                       查看详情
                     </button>
-                    {p.status === "approved" ? (
+                    {p.status === "approved" && (
                       <button
                         className="small danger"
                         onClick={() => markAsSold(p)}
                       >
                         标记已售
                       </button>
-                    ) : (
-                      <button className="small ghost" disabled>
-                        -
+                    )}
+                    {(p.status === "pending" || p.status === "rejected" || p.status === "approved" || p.status === "offline") && (
+                      <button
+                        className="small"
+                        onClick={() => onEditProduct(p)}
+                      >
+                        编辑
+                      </button>
+                    )}
+                    {p.status !== "sold" && (
+                      <button
+                        className="small danger ghost"
+                        onClick={() => onDeleteProduct(p)}
+                      >
+                        删除
                       </button>
                     )}
                   </div>
@@ -1113,6 +1141,7 @@ export function ManageTab(props: {
   adminFilteredProducts: Product[];
   audit: (id: string, action: "approve" | "reject") => void;
   toggleStatus: (id: string, status: "approved" | "offline") => void;
+  loadDetail: (id: string) => void;
 }) {
   const {
     adminStats,
@@ -1122,6 +1151,7 @@ export function ManageTab(props: {
     adminFilteredProducts,
     audit,
     toggleStatus,
+    loadDetail,
   } = props;
   return (
     <>
@@ -1202,6 +1232,12 @@ export function ManageTab(props: {
                 <td>{p.status}</td>
                 <td>{p.rejectionReason || "-"}</td>
                 <td>
+                  <button
+                    className="small ghost"
+                    onClick={() => loadDetail(p.id)}
+                  >
+                    详情
+                  </button>
                   {p.status === "pending" && (
                     <>
                       <button

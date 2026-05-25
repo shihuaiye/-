@@ -7,7 +7,7 @@ const DB_CONFIG = {
   host: process.env.DB_HOST || "localhost",
   port: Number(process.env.DB_PORT) || 3306,
   user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "zsh123456",
+  password: process.env.DB_PASSWORD || "200508140086",
   database: process.env.DB_NAME || "secondhand",
 };
 

@@ -103,6 +103,33 @@ export const api = {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
       }),
+    update: (
+      id: string,
+      payload: {
+        title?: string;
+        description?: string;
+        price?: number;
+        category?: string;
+        images?: string[];
+        campus?: string;
+        brand?: string;
+        model?: string;
+        memory?: string;
+        latitude?: number;
+        longitude?: number;
+      },
+      headers: HeadersInit,
+    ) =>
+      request<Product>(`/products/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(payload),
+      }),
+    delete: (id: string, headers: HeadersInit) =>
+      request<{ message: string }>(`/products/${id}`, {
+        method: "DELETE",
+        headers,
+      }),
   },
   favorites: {
     list: (headers: HeadersInit) => request<string[]>("/favorites", { headers }),

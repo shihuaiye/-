@@ -1,6 +1,207 @@
 import { useEffect, useState } from "react";
 import type { Conversation, Order, Product, ProductMessage, Role, User } from "../types";
 
+export function EditProductModal(props: {
+  product: Product | null;
+  setProduct: (value: Product | null) => void;
+  onSave: (updatedProduct: Partial<Product>) => void | Promise<void>;
+}) {
+  const { product, setProduct, onSave } = props;
+  const [form, setForm] = useState({
+    title: "",
+    description: "",
+    price: 0,
+    category: "other" as Product["category"],
+    images: [] as string[],
+    campus: "",
+    brand: "",
+    model: "",
+    memory: "",
+  });
+  const [imageFile, setImageFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    if (product) {
+      setForm({
+        title: product.title,
+        description: product.description,
+        price: product.price,
+        category: product.category,
+        images: product.images,
+        campus: product.campus,
+        brand: product.brand || "",
+        model: product.model || "",
+        memory: product.memory || "",
+      });
+    }
+  }, [product]);
+
+  const toBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const handleImageUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const fileArray = Array.from(files).slice(0, 6);
+    const images = await Promise.all(fileArray.map((f) => toBase64(f)));
+    setForm((prev) => ({ ...prev, images }));
+  };
+
+  const handleSubmit = async () => {
+    if (!form.title || !form.description || !form.campus) {
+      alert("请填写标题、描述和校区");
+      return;
+    }
+    if (form.images.length === 0) {
+      alert("请至少上传一张商品图片");
+      return;
+    }
+    if (form.category === "digital" && (!form.brand || !form.model || !form.memory)) {
+      alert("数码商品必须填写品牌、型号和内存容量");
+      return;
+    }
+    await onSave({
+      title: form.title,
+      description: form.description,
+      price: form.price,
+      category: form.category,
+      images: form.images,
+      campus: form.campus,
+      brand: form.category === "digital" ? form.brand : undefined,
+      model: form.category === "digital" ? form.model : undefined,
+      memory: form.category === "digital" ? form.memory : undefined,
+    });
+  };
+
+  if (!product) return null;
+
+  return (
+    <div className="modal-mask" onClick={() => setProduct(null)}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600, maxHeight: "90vh", overflowY: "auto" }}>
+        <h3>编辑商品</h3>
+        {product.status === "rejected" && product.rejectionReason && (
+          <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: 12, marginBottom: 16 }}>
+            <p style={{ color: "#dc2626", fontWeight: 600, margin: 0 }}>拒绝原因：{product.rejectionReason}</p>
+            <p style={{ color: "#64748b", margin: "4px 0 0 0", fontSize: 14 }}>请根据拒绝原因修改后重新提交</p>
+          </div>
+        )}
+        <div style={{ display: "grid", gap: 12 }}>
+          <div>
+            <label className="field-label">标题</label>
+            <input
+              className="field-input"
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              placeholder="商品标题"
+            />
+          </div>
+          <div>
+            <label className="field-label">描述</label>
+            <textarea
+              className="field-input"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="商品描述"
+              rows={3}
+            />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label className="field-label">价格</label>
+              <input
+                className="field-input"
+                type="number"
+                value={form.price}
+                onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+                placeholder="价格"
+              />
+            </div>
+            <div>
+              <label className="field-label">分类</label>
+              <select
+                className="field-input"
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value as Product["category"] })}
+              >
+                <option value="digital">数码</option>
+                <option value="book">书籍</option>
+                <option value="daily">日用</option>
+                <option value="ticket">票券</option>
+                <option value="other">其他</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="field-label">校区</label>
+            <input
+              className="field-input"
+              value={form.campus}
+              onChange={(e) => setForm({ ...form, campus: e.target.value })}
+              placeholder="校区"
+            />
+          </div>
+          {form.category === "digital" && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+              <div>
+                <label className="field-label">品牌</label>
+                <input
+                  className="field-input"
+                  value={form.brand}
+                  onChange={(e) => setForm({ ...form, brand: e.target.value })}
+                  placeholder="品牌"
+                />
+              </div>
+              <div>
+                <label className="field-label">型号</label>
+                <input
+                  className="field-input"
+                  value={form.model}
+                  onChange={(e) => setForm({ ...form, model: e.target.value })}
+                  placeholder="型号"
+                />
+              </div>
+              <div>
+                <label className="field-label">内存</label>
+                <input
+                  className="field-input"
+                  value={form.memory}
+                  onChange={(e) => setForm({ ...form, memory: e.target.value })}
+                  placeholder="内存"
+                />
+              </div>
+            </div>
+          )}
+          <div>
+            <label className="field-label">商品图片</label>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => handleImageUpload(e.target.files)}
+            />
+            {form.images.length > 0 && (
+              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                {form.images.map((img, i) => (
+                  <img key={i} src={img} alt={`图片${i + 1}`} style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8 }} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="row" style={{ marginTop: 16 }}>
+          <button onClick={handleSubmit}>保存并重新提交审核</button>
+          <button className="ghost" onClick={() => setProduct(null)}>取消</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AccountDetailModal(props: {
   accountDetail: User | null;
   accountForm: {

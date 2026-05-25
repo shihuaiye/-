@@ -2,6 +2,71 @@ import type { Product } from "./types";
 
 export const PAGE_SIZE = 12;
 
+export type PresetLocation = {
+  label: string;
+  campus: string;
+  latitude: number;
+  longitude: number;
+};
+
+export const PRESET_LOCATIONS: PresetLocation[] = [
+  {
+    label: "武汉大学",
+    campus: "武汉大学",
+    latitude: 30.5431,
+    longitude: 114.3649,
+  },
+  {
+    label: "华中科技大学",
+    campus: "华中科技大学",
+    latitude: 30.527,
+    longitude: 114.365,
+  },
+  {
+    label: "武汉理工大学",
+    campus: "武汉理工大学",
+    latitude: 30.528,
+    longitude: 114.341,
+  },
+  {
+    label: "中南民族大学",
+    campus: "中南民族大学",
+    latitude: 30.55,
+    longitude: 114.355,
+  },
+  {
+    label: "华中农业大学",
+    campus: "华中农业大学",
+    latitude: 30.517,
+    longitude: 114.365,
+  },
+  {
+    label: "中南财经政法大学",
+    campus: "中南财经政法大学",
+    latitude: 30.497,
+    longitude: 114.372,
+  },
+  {
+    label: "华中师范大学",
+    campus: "华中师范大学",
+    latitude: 30.522,
+    longitude: 114.345,
+  },
+];
+
+export const getProductLocation = (product: Product): { latitude: number; longitude: number } | null => {
+  if (typeof product.latitude === "number" && typeof product.longitude === "number") {
+    return { latitude: product.latitude, longitude: product.longitude };
+  }
+  const matchedLocation = PRESET_LOCATIONS.find(
+    (loc) => product.campus.includes(loc.campus) || loc.campus.includes(product.campus)
+  );
+  if (matchedLocation) {
+    return { latitude: matchedLocation.latitude, longitude: matchedLocation.longitude };
+  }
+  return null;
+};
+
 export const passwordStrength = (pwd: string) => {
   let score = 0;
   if (pwd.length >= 8) score++;

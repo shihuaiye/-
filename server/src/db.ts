@@ -5,7 +5,7 @@ const DB_CONFIG = {
   host: process.env.DB_HOST || "localhost",
   port: Number(process.env.DB_PORT) || 3306,
   user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "zsh123456",
+  password: process.env.DB_PASSWORD || "200508140086",
   database: process.env.DB_NAME || "secondhand",
 };
 
@@ -482,17 +482,57 @@ export const updateProduct = async (
 ): Promise<void> => {
   const sets: string[] = [];
   const values: any[] = [];
+  if (fields.title !== undefined) {
+    sets.push("title = ?");
+    values.push(fields.title);
+  }
+  if (fields.description !== undefined) {
+    sets.push("description = ?");
+    values.push(fields.description);
+  }
+  if (fields.price !== undefined) {
+    sets.push("price = ?");
+    values.push(fields.price);
+  }
+  if (fields.category !== undefined) {
+    sets.push("category = ?");
+    values.push(fields.category);
+  }
+  if (fields.images !== undefined) {
+    sets.push("images = ?");
+    values.push(JSON.stringify(fields.images));
+  }
+  if (fields.campus !== undefined) {
+    sets.push("campus = ?");
+    values.push(fields.campus);
+  }
+  if (fields.brand !== undefined) {
+    sets.push("brand = ?");
+    values.push(fields.brand || null);
+  }
+  if (fields.model !== undefined) {
+    sets.push("model = ?");
+    values.push(fields.model || null);
+  }
+  if (fields.memory !== undefined) {
+    sets.push("memory = ?");
+    values.push(fields.memory || null);
+  }
+  if (fields.latitude !== undefined) {
+    sets.push("latitude = ?");
+    values.push(fields.latitude ?? null);
+  }
+  if (fields.longitude !== undefined) {
+    sets.push("longitude = ?");
+    values.push(fields.longitude ?? null);
+  }
   if (fields.status !== undefined) {
     sets.push("status = ?");
     values.push(fields.status);
   }
   if (fields.rejectionReason !== undefined) {
     sets.push("rejectionReason = ?");
-    values.push(fields.rejectionReason);
-  }
-  if (fields.rejectionReason === null) {
-    sets.push("rejectionReason = NULL");
-    values.pop();
+    values.push(fields.rejectionReason || null);
   }
   if (fields.updatedAt !== undefined) {
     sets.push("updatedAt = ?");
@@ -504,6 +544,10 @@ export const updateProduct = async (
     `UPDATE products SET ${sets.join(", ")} WHERE id = ?`,
     values
   );
+};
+
+export const deleteProduct = async (id: string): Promise<void> => {
+  await getPool().query("DELETE FROM products WHERE id = ?", [id]);
 };
 
 export const readMessages = async (): Promise<ProductMessage[]> => {

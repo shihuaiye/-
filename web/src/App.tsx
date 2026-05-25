@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppSidebar } from "./components/AppSidebar.tsx";
 import { AuthView } from "./components/AuthView.tsx";
-import { AccountDetailModal, ProductDetailModal, RatingModal } from "./components/modals.tsx";
+import { AccountDetailModal, ProductDetailModal, RatingModal, EditProductModal } from "./components/modals.tsx";
 import {
   AccountsTab,
   CartTab,
@@ -11,7 +11,6 @@ import {
   PostProfileTab,
   PostPublishTab,
 } from "./components/tabs.tsx";
-import { PRESET_LOCATIONS } from "./constants/locations.ts";
 import { api } from "./services/api.ts";
 import type {
   Category,
@@ -26,7 +25,7 @@ import type {
   Tab,
   User,
 } from "./types";
-import { PAGE_SIZE, distanceKm, passwordStrength, toBase64 } from "./utils.ts";
+import { PAGE_SIZE, distanceKm, passwordStrength, toBase64, getProductLocation, PRESET_LOCATIONS } from "./utils.ts";
 
 export function App() {
   const [token, setToken] = useState(localStorage.getItem("sh-token") || "");
@@ -75,6 +74,7 @@ export function App() {
     longitude: number;
   } | null>(null);
   const [accountDetail, setAccountDetail] = useState<User | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [accountForm, setAccountForm] = useState({
     username: "",
     password: "",
@@ -263,7 +263,14 @@ export function App() {
   };
 
   const audit = async (id: string, action: "approve" | "reject") => {
-    const reason = action === "reject" ? prompt("请输入拒绝理由") || "" : "";
+    let reason = "";
+    if (action === "reject") {
+      reason = prompt("请输入拒绝理由（必填）：")?.trim() || "";
+      if (!reason) {
+        alert("拒绝时必须填写理由");
+        return;
+      }
+    }
     const json = await api.products.audit(id, action, reason, authHeaders());
     if (!json.success) return alert(json.message);
     await Promise.all([loadAllForAdmin(), loadMarket()]);
@@ -517,6 +524,23 @@ export function App() {
     ]);
   };
 
+  const deleteMyProduct = async (product: Product) => {
+    if (!confirm(`确认删除商品"${product.title}"？此操作不可撤销。`)) return;
+    const json = await api.products.delete(product.id, authHeaders());
+    if (!json.success) return alert(json.message);
+    alert("商品已删除");
+    await Promise.all([loadMine(), loadMarket(), loadAllForAdmin()]);
+  };
+
+  const updateMyProduct = async (updatedFields: Partial<Product>) => {
+    if (!editingProduct) return;
+    const json = await api.products.update(editingProduct.id, updatedFields, authHeaders());
+    if (!json.success) return alert(json.message);
+    alert("商品已更新，等待审核");
+    setEditingProduct(null);
+    await Promise.all([loadMine(), loadMarket(), loadAllForAdmin()]);
+  };
+
   const buyFromCart = async (product: Product) => {
     if (!user) return;
     if (product.sellerId === user.id) {
@@ -600,9 +624,14 @@ export function App() {
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
     } else if (sortBy === "distance" && userLocation) {
-      result = [...result].sort(
-        (a, b) => distanceKm(userLocation, a) - distanceKm(userLocation, b),
-      );
+      result = [...result].sort((a, b) => {
+        const locA = getProductLocation(a);
+        const locB = getProductLocation(b);
+        if (!locA && !locB) return 0;
+        if (!locA) return 1;
+        if (!locB) return -1;
+        return distanceKm(userLocation, locA) - distanceKm(userLocation, locB);
+      });
     }
     return result;
   }, [marketProducts, keyword, categoryFilter, sortBy, userLocation]);
@@ -809,6 +838,8 @@ export function App() {
               myPurchases={myPurchases}
               profileStats={profileStats}
               onRateOrder={setPendingRatingOrder}
+              onDeleteProduct={deleteMyProduct}
+              onEditProduct={setEditingProduct}
             />
           )}
 
@@ -831,6 +862,7 @@ export function App() {
               adminFilteredProducts={adminFilteredProducts}
               audit={audit}
               toggleStatus={toggleStatus}
+              loadDetail={loadDetail}
             />
           )}
 
@@ -892,6 +924,12 @@ export function App() {
           if (!pendingRatingOrder) return;
           return rateOrder(pendingRatingOrder, rating);
         }}
+      />
+
+      <EditProductModal
+        product={editingProduct}
+        setProduct={setEditingProduct}
+        onSave={updateMyProduct}
       />
     </div>
   );

@@ -80,9 +80,21 @@ CREATE TABLE IF NOT EXISTS orders (
   sellerName VARCHAR(64) NOT NULL,
   price DECIMAL(10,2) NOT NULL DEFAULT 0,
   status ENUM('completed') NOT NULL DEFAULT 'completed',
+  rating TINYINT UNSIGNED,
+  ratedAt DATETIME,
   createdAt DATETIME NOT NULL,
   INDEX idx_buyerId (buyerId),
   INDEX idx_sellerId (sellerId)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+`;
+const CREATE_FAVORITES_TABLE = `
+CREATE TABLE IF NOT EXISTS favorites (
+  userId VARCHAR(64) NOT NULL,
+  productId VARCHAR(64) NOT NULL,
+  createdAt DATETIME NOT NULL,
+  PRIMARY KEY (userId, productId),
+  INDEX idx_favorites_userId (userId),
+  INDEX idx_favorites_productId (productId)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 `;
 export const initDb = async () => {
@@ -100,6 +112,21 @@ export const initDb = async () => {
     await p.query(CREATE_PRODUCTS_TABLE);
     await p.query(CREATE_MESSAGES_TABLE);
     await p.query(CREATE_ORDERS_TABLE);
+    await p.query(CREATE_FAVORITES_TABLE);
+    try {
+        await p.query("ALTER TABLE orders ADD COLUMN rating TINYINT UNSIGNED NULL AFTER status");
+    }
+    catch (error) {
+        if (error?.code !== "ER_DUP_FIELDNAME")
+            throw error;
+    }
+    try {
+        await p.query("ALTER TABLE orders ADD COLUMN ratedAt DATETIME NULL AFTER rating");
+    }
+    catch (error) {
+        if (error?.code !== "ER_DUP_FIELDNAME")
+            throw error;
+    }
     const [rows] = await p.query("SELECT COUNT(*) AS cnt FROM users");
     if (rows[0].cnt === 0) {
         const now = new Date();
@@ -253,6 +280,8 @@ function rowToOrder(row) {
         price: Number(row.price),
         status: row.status,
         createdAt: new Date(row.createdAt).toISOString(),
+        rating: row.rating != null ? Number(row.rating) : undefined,
+        ratedAt: row.ratedAt ? new Date(row.ratedAt).toISOString() : undefined,
     };
 }
 export const readUsers = async () => {
@@ -310,6 +339,10 @@ export const updateUser = async (id, fields) => {
 export const deleteUser = async (id) => {
     await getPool().query("DELETE FROM users WHERE id = ?", [id]);
 };
+export const findOrderById = async (id) => {
+    const [rows] = await getPool().query("SELECT * FROM orders WHERE id = ?", [id]);
+    return rows.length > 0 ? rowToOrder(rows[0]) : null;
+};
 export const readProducts = async () => {
     const [rows] = await getPool().query("SELECT * FROM products");
     return rows.map(rowToProduct);
@@ -323,6 +356,10 @@ export const findProductsBySellerId = async (sellerId) => {
     return rows.map(rowToProduct);
 };
 export const findApprovedProducts = async () => {
+    const [rows] = await getPool().query("SELECT * FROM products WHERE status = 'approved'");
+    return rows.map(rowToProduct);
+};
+export const findAvailableProducts = async () => {
     const [rows] = await getPool().query("SELECT * FROM products WHERE status = 'approved'");
     return rows.map(rowToProduct);
 };
@@ -353,17 +390,57 @@ export const createProduct = async (product) => {
 export const updateProduct = async (id, fields) => {
     const sets = [];
     const values = [];
+    if (fields.title !== undefined) {
+        sets.push("title = ?");
+        values.push(fields.title);
+    }
+    if (fields.description !== undefined) {
+        sets.push("description = ?");
+        values.push(fields.description);
+    }
+    if (fields.price !== undefined) {
+        sets.push("price = ?");
+        values.push(fields.price);
+    }
+    if (fields.category !== undefined) {
+        sets.push("category = ?");
+        values.push(fields.category);
+    }
+    if (fields.images !== undefined) {
+        sets.push("images = ?");
+        values.push(JSON.stringify(fields.images));
+    }
+    if (fields.campus !== undefined) {
+        sets.push("campus = ?");
+        values.push(fields.campus);
+    }
+    if (fields.brand !== undefined) {
+        sets.push("brand = ?");
+        values.push(fields.brand || null);
+    }
+    if (fields.model !== undefined) {
+        sets.push("model = ?");
+        values.push(fields.model || null);
+    }
+    if (fields.memory !== undefined) {
+        sets.push("memory = ?");
+        values.push(fields.memory || null);
+    }
+    if (fields.latitude !== undefined) {
+        sets.push("latitude = ?");
+        values.push(fields.latitude ?? null);
+    }
+    if (fields.longitude !== undefined) {
+        sets.push("longitude = ?");
+        values.push(fields.longitude ?? null);
+    }
     if (fields.status !== undefined) {
         sets.push("status = ?");
         values.push(fields.status);
     }
     if (fields.rejectionReason !== undefined) {
         sets.push("rejectionReason = ?");
-        values.push(fields.rejectionReason);
-    }
-    if (fields.rejectionReason === null) {
-        sets.push("rejectionReason = NULL");
-        values.pop();
+        values.push(fields.rejectionReason || null);
     }
     if (fields.updatedAt !== undefined) {
         sets.push("updatedAt = ?");
@@ -419,7 +496,7 @@ export const findOrdersByBuyerId = async (buyerId) => {
     return rows.map(rowToOrder);
 };
 export const createOrder = async (order) => {
-    await getPool().query("INSERT INTO orders (id, productId, productTitle, buyerId, buyerName, sellerId, sellerName, price, status, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+    await getPool().query("INSERT INTO orders (id, productId, productTitle, buyerId, buyerName, sellerId, sellerName, price, status, rating, ratedAt, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
         order.id,
         order.productId,
         order.productTitle,
@@ -429,7 +506,42 @@ export const createOrder = async (order) => {
         order.sellerName,
         order.price,
         order.status,
+        order.rating ?? null,
+        order.ratedAt ? new Date(order.ratedAt) : null,
         new Date(order.createdAt),
     ]);
     return order;
+};
+export const updateOrderRating = async (orderId, buyerId, rating) => {
+    await getPool().query("UPDATE orders SET rating = ?, ratedAt = ? WHERE id = ? AND buyerId = ?", [rating, new Date(), orderId, buyerId]);
+    return findOrderById(orderId);
+};
+export const findOrdersBySellerId = async (sellerId) => {
+    const [rows] = await getPool().query("SELECT * FROM orders WHERE sellerId = ? ORDER BY createdAt DESC", [sellerId]);
+    return rows.map(rowToOrder);
+};
+export const findFavoriteProductIdsByUserId = async (userId) => {
+    const [rows] = await getPool().query("SELECT productId FROM favorites WHERE userId = ? ORDER BY createdAt DESC", [userId]);
+    return rows.map((row) => row.productId);
+};
+export const toggleFavoriteProduct = async (userId, productId) => {
+    const [rows] = await getPool().query("SELECT 1 AS existsFlag FROM favorites WHERE userId = ? AND productId = ?", [userId, productId]);
+    if (rows.length > 0) {
+        await getPool().query("DELETE FROM favorites WHERE userId = ? AND productId = ?", [userId, productId]);
+        return { liked: false };
+    }
+    await getPool().query("INSERT INTO favorites (userId, productId, createdAt) VALUES (?, ?, ?)", [userId, productId, new Date()]);
+    return { liked: true };
+};
+export const getProfileStats = async (userId) => {
+    const [ratingRows] = await getPool().query("SELECT AVG(rating) AS avgRating, COUNT(rating) AS ratingCount FROM orders WHERE sellerId = ? AND rating IS NOT NULL", [userId]);
+    const [likeRows] = await getPool().query("SELECT COUNT(*) AS likesCount FROM favorites f INNER JOIN products p ON p.id = f.productId WHERE p.sellerId = ?", [userId]);
+    const avgRating = Number(ratingRows[0]?.avgRating || 0);
+    const ratingCount = Number(ratingRows[0]?.ratingCount || 0);
+    const likesCount = Number(likeRows[0]?.likesCount || 0);
+    return {
+        trustScore: ratingCount > 0 ? Math.round(avgRating * 10) / 10 : 0,
+        likesCount,
+        ratingCount,
+    };
 };

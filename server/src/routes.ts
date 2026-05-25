@@ -15,6 +15,7 @@ import {
   findApprovedProducts,
   createProduct,
   updateProduct,
+  deleteProduct,
   findMessagesByProductId,
   findMessagesByUserId,
   findConversationMessages,
@@ -29,7 +30,7 @@ import {
   toggleFavoriteProduct,
   getProfileStats,
 } from "./db.js";
-import { CreateProductBody, RegisterBody, Order } from "@secondhand/shared/src/index.js";
+import { CreateProductBody, RegisterBody, Order, Product } from "@secondhand/shared/src/index.js";
 
 export const router = Router();
 
@@ -206,6 +207,48 @@ router.post("/products/:id/status", auth, adminOnly, async (req, res) => {
   product.status = status;
   product.updatedAt = new Date().toISOString();
   res.json({ success: true, data: product });
+});
+
+router.put("/products/:id", auth, async (req: AuthedRequest, res) => {
+  const product = await findProductById(req.params.id);
+  if (!product) return res.status(404).json({ success: false, message: "商品不存在" });
+  if (product.sellerId !== req.userId && req.role !== "admin") {
+    return res.status(403).json({ success: false, message: "无权修改该商品" });
+  }
+  if (product.status === "sold") {
+    return res.status(400).json({ success: false, message: "已售出商品不可修改" });
+  }
+  const body = req.body as Partial<CreateProductBody>;
+  const now = new Date().toISOString();
+  const updateFields: Partial<Product> = {
+    updatedAt: now,
+    status: "pending",
+    rejectionReason: undefined,
+  };
+  if (body.title !== undefined) updateFields.title = body.title;
+  if (body.description !== undefined) updateFields.description = body.description;
+  if (body.price !== undefined) updateFields.price = Number(body.price);
+  if (body.category !== undefined) updateFields.category = body.category;
+  if (body.images !== undefined) updateFields.images = body.images;
+  if (body.campus !== undefined) updateFields.campus = body.campus;
+  if (body.brand !== undefined) updateFields.brand = body.brand;
+  if (body.model !== undefined) updateFields.model = body.model;
+  if (body.memory !== undefined) updateFields.memory = body.memory;
+  if (body.latitude !== undefined) updateFields.latitude = body.latitude;
+  if (body.longitude !== undefined) updateFields.longitude = body.longitude;
+  await updateProduct(product.id, updateFields);
+  const updatedProduct = await findProductById(product.id);
+  res.json({ success: true, data: updatedProduct });
+});
+
+router.delete("/products/:id", auth, async (req: AuthedRequest, res) => {
+  const product = await findProductById(req.params.id);
+  if (!product) return res.status(404).json({ success: false, message: "商品不存在" });
+  if (product.sellerId !== req.userId && req.role !== "admin") {
+    return res.status(403).json({ success: false, message: "无权删除该商品" });
+  }
+  await deleteProduct(product.id);
+  res.json({ success: true, message: "商品已删除" });
 });
 
 router.get("/products/:id/messages", auth, async (req, res) => {
