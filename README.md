@@ -24,8 +24,7 @@ pnpm install
 ### 数据库
 
 1. 安装 MySQL，创建库（或由程序自动创建）`secondhand`
-2. 复制 `server/.env.example` 为 `server/.env` 并填写数据库密码与 `JWT_SECRET`
-3. 可选：复制 `web/.env.example` 为 `web/.env` 修改 API 地址
+2. 在`server/.env` 并填写数据库密码
 
 ```bash
 cd server
