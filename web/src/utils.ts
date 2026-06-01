@@ -1,4 +1,8 @@
 import type { Product } from "./types";
+import {
+  WUHAN_UNIVERSITIES,
+  flattenCampusLocations,
+} from "./constants/wuhanUniversities.ts";
 
 export const PAGE_SIZE = 12;
 
@@ -9,57 +13,26 @@ export type PresetLocation = {
   longitude: number;
 };
 
-export const PRESET_LOCATIONS: PresetLocation[] = [
-  {
-    label: "武汉大学",
-    campus: "武汉大学",
-    latitude: 30.5431,
-    longitude: 114.3649,
-  },
-  {
-    label: "华中科技大学",
-    campus: "华中科技大学",
-    latitude: 30.527,
-    longitude: 114.365,
-  },
-  {
-    label: "武汉理工大学",
-    campus: "武汉理工大学",
-    latitude: 30.528,
-    longitude: 114.341,
-  },
-  {
-    label: "中南民族大学",
-    campus: "中南民族大学",
-    latitude: 30.55,
-    longitude: 114.355,
-  },
-  {
-    label: "华中农业大学",
-    campus: "华中农业大学",
-    latitude: 30.517,
-    longitude: 114.365,
-  },
-  {
-    label: "中南财经政法大学",
-    campus: "中南财经政法大学",
-    latitude: 30.497,
-    longitude: 114.372,
-  },
-  {
-    label: "华中师范大学",
-    campus: "华中师范大学",
-    latitude: 30.522,
-    longitude: 114.345,
-  },
-];
+/** @deprecated 请使用 WUHAN_UNIVERSITIES / CampusPicker */
+export const PRESET_LOCATIONS: PresetLocation[] = flattenCampusLocations();
 
 export const getProductLocation = (product: Product): { latitude: number; longitude: number } | null => {
   if (typeof product.latitude === "number" && typeof product.longitude === "number") {
     return { latitude: product.latitude, longitude: product.longitude };
   }
+  for (const uni of WUHAN_UNIVERSITIES) {
+    if (!product.campus.includes(uni.name)) continue;
+    const campus = uni.campuses.find((c) => product.campus.includes(c.name));
+    if (campus) {
+      return { latitude: campus.latitude, longitude: campus.longitude };
+    }
+    const first = uni.campuses[0];
+    if (first) {
+      return { latitude: first.latitude, longitude: first.longitude };
+    }
+  }
   const matchedLocation = PRESET_LOCATIONS.find(
-    (loc) => product.campus.includes(loc.campus) || loc.campus.includes(product.campus)
+    (loc) => product.campus.includes(loc.label) || loc.campus.includes(product.campus),
   );
   if (matchedLocation) {
     return { latitude: matchedLocation.latitude, longitude: matchedLocation.longitude };

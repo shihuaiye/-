@@ -8,7 +8,7 @@ import {
   updateOrder,
   updateProduct,
   findInProgressOrderByProductId,
-} from "./db.js";
+} from "./repositories/index.js";
 import type { Order, Product } from "@secondhand/shared/src/index.js";
 
 export const SYSTEM_USER_ID = "system";

@@ -1,50 +1,49 @@
 # pc-secondhand
 
-基于现有技术栈拆出的 PC 校园二手交易平台（起步版）。
+基于 pnpm workspace 的 PC 校园二手交易平台。
 
 ## 目录
 
-- `server`：Express + TypeScript API（文件存储）
-- `web`：React + Vite PC 端页面（基础壳）
+- `server`：Express + TypeScript + MySQL API
+- `web`：React + Vite 前端
 - `shared`：前后端共享类型
 
-## 已实现（MVP 起步）
+## 架构概览
 
-- 认证：登录、注册（仅 `admin` / `seller`）
-- 商品：发布、列表、审核（通过/拒绝）、下线/恢复
-- 下线为软下线，可恢复
+- **鉴权**：bcrypt 密码哈希 + JWT（Bearer Token）
+- **数据层**：`repositories/` 访问 MySQL
+- **路由**：`server/src/routes/` 按模块拆分
+- **前端**：`hooks/` 管理状态，`VITE_API_URL` 配置 API 地址
 
 ## 快速启动
 
-```bash(在所属文件夹中打开终端）
+```bash
 pnpm install
-npm install mysql2
+```
+
+### 数据库
+
+1. 安装 MySQL，创建库（或由程序自动创建）`secondhand`
+2. 复制 `server/.env.example` 为 `server/.env` 并填写数据库密码与 `JWT_SECRET`
+3. 可选：复制 `web/.env.example` 为 `web/.env` 修改 API 地址
+
+```bash
+cd server
+pnpm migrate   # 仅在有旧 JSON 备份时需要
+cd ..
 pnpm dev
 ```
 
-- 注意：电脑首先要已经安装MYSQL
-- 然后修改：db.ts （4-10行）
-- const DB_CONFIG = {
-  host: process.env.DB_HOST || "localhost",
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || "root",（root改为自己的数据库名字）
-  password: process.env.DB_PASSWORD || "xxxx",(把xxx改为自己数据库密码）
-  database: process.env.DB_NAME || "secondhand",
-  };
-- 同理更新 migrate.ts 中（6-11）行的密码
-- 然后：cd f:\secondhand\-\server;
-- pnpm migrate
-- 这一步是完成数据的迁移，然后就可以正常在server和web下pnpm dev启动程序了
-
-## TOdolist
-
-当前代办任务：
-
-- 样式方面：个人中心页面使用的颜色需修改、我的收藏界面美化；
-- 优化：设置“可小刀”等快捷回复,商品广场查看商品详情的时候点击卖家可以显示卖家的一些基本信息，比如诚信分啥的
 - API: `http://localhost:3100`
 - Web: `http://localhost:5174`
 
 ## 测试账号（首次启动自动初始化）
 
-- 管理员：`admin / admin123`
+- 管理员：`admin` / `admin123`
+- 普通用户：`user01` / `user123`
+
+## 功能亮点
+
+- 商品审核、订单流、私信、收藏、卖家诚信分
+- 私信快捷回复（内置 + 用户自定义）
+- 首页智能推荐（分类偏好、收藏、上新时间等多因子打分）

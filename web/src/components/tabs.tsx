@@ -11,6 +11,7 @@ import type {
   Status,
   User,
 } from "../types";
+import type { PresetLocation } from "../utils.ts";
 import { SYSTEM_USER_ID } from "../types";
 import {
   findOrderById,
@@ -19,8 +20,14 @@ import {
   parseOrderIdFromContent,
   stripOrderTag,
 } from "../orderUtils";
-import type { PresetLocation } from "../utils.ts";
-import { distanceKm, getProductLocation, PRESET_LOCATIONS } from "../utils.ts";
+import { QuickReplyBar } from "./QuickReplyBar.tsx";
+import {
+  CampusPicker,
+  applyCampusToPublishForm,
+  campusSelectionFromPublishForm,
+} from "./CampusPicker.tsx";
+import { distanceKm, getProductLocation } from "../utils.ts";
+import { OrderReviewPreview } from "./modals.tsx";
 
 export function MarketTab(props: {
   keyword: string;
@@ -41,6 +48,7 @@ export function MarketTab(props: {
   pageCount: number;
   setPage: (updater: (n: number) => number) => void;
   recommendations: Product[];
+  recommendReason?: string;
   cart: string[];
   toggleCart: (id: string) => void;
 }) {
@@ -61,6 +69,7 @@ export function MarketTab(props: {
     pageCount,
     setPage,
     recommendations,
+    recommendReason,
     cart,
     toggleCart,
   } = props;
@@ -147,6 +156,35 @@ export function MarketTab(props: {
           </div>
         </div>
       </section>
+
+      {recommendations.length > 0 && (
+        <section className="recommend-section">
+          <div className="recommend-header">
+            <div>
+              <h3 className="recommend-title">为你推荐</h3>
+              <p className="recommend-subtitle muted">
+                {recommendReason || "根据你的兴趣挑选"}
+              </p>
+            </div>
+          </div>
+          <div className="recommend-scroll">
+            {recommendations.map((p) => (
+              <article
+                key={p.id}
+                className="recommend-card"
+                onClick={() => loadDetail(p.id)}
+              >
+                <img src={p.images?.[0]} alt={p.title} className="recommend-thumb" />
+                <div className="recommend-card-body">
+                  <h4>{p.title}</h4>
+                  <span className="recommend-price">¥{p.price}</span>
+                  <span className="recommend-campus muted">{p.campus}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       {pagedMarket.length === 0 ? (
         <section className="empty-state">
@@ -567,7 +605,15 @@ export function MineTab(props: {
                   <td>{new Date(o.createdAt).toLocaleString("zh-CN")}</td>
                   <td>
                     {o.rating ? (
-                      <span>已评分 {o.rating}/10</span>
+                      <div className="order-review-cell">
+                        <span>已评 {o.rating}/10</span>
+                        {o.reviewText && (
+                          <span className="muted order-review-snippet">
+                            {o.reviewText.slice(0, 24)}
+                            {o.reviewText.length > 24 ? "…" : ""}
+                          </span>
+                        )}
+                      </div>
                     ) : o.status === "completed" ? (
                       <span className="muted">可在个人中心订单中评分</span>
                     ) : (
@@ -595,15 +641,9 @@ export function PostPublishTab(props: {
   setPublishForm: (value: PublishForm) => void;
   onPublishImagesSelected: (files: FileList | null) => void;
   publish: () => void;
-  presetLocations: PresetLocation[];
 }) {
-  const {
-    publishForm,
-    setPublishForm,
-    onPublishImagesSelected,
-    publish,
-    presetLocations,
-  } = props;
+  const { publishForm, setPublishForm, onPublishImagesSelected, publish } = props;
+  const campusValue = campusSelectionFromPublishForm(publishForm);
 
   const removeImageAt = (idx: number) => {
     setPublishForm({
@@ -738,47 +778,12 @@ export function PostPublishTab(props: {
             />
           </div>
 
-          <div className="publish-location">
-            <label className="field-label publish-location-title">
-              学校选择
-            </label>
-
-            <div className="publish-chip-grid">
-              {presetLocations.map((loc) => (
-                <button
-                  key={loc.label}
-                  type="button"
-                  className={
-                    publishForm.school === loc.label ? "chip active" : "chip"
-                  }
-                  onClick={() =>
-                    setPublishForm({
-                      ...publishForm,
-                      school: loc.label,
-                      latitude: loc.latitude,
-                      longitude: loc.longitude,
-                    })
-                  }
-                >
-                  {loc.campus}
-                </button>
-              ))}
-            </div>
-
-            <div className="publish-location-actions">
-              <input
-                className="field-input"
-                placeholder="填写具体校区 / 学部"
-                value={publishForm.schoolDetail}
-                onChange={(e) =>
-                  setPublishForm({
-                    ...publishForm,
-                    schoolDetail: e.target.value,
-                  })
-                }
-              />
-            </div>
-          </div>
+          <CampusPicker
+            value={campusValue}
+            onChange={(sel) =>
+              setPublishForm(applyCampusToPublishForm(sel, publishForm))
+            }
+          />
 
           {publishForm.category === "digital" && (
             <div className="publish-digital-grid">
@@ -849,6 +854,29 @@ export function PostProfileTab(props: {
   const [profileTab, setProfileTab] = useState<"published" | "orders">(
     "published",
   );
+  const [productFilter, setProductFilter] = useState<Status | "all">("all");
+
+  const productFilterOptions: { key: Status | "all"; label: string }[] = [
+    { key: "all", label: "全部" },
+    { key: "approved", label: "售卖中" },
+    { key: "pending", label: "审核中" },
+    { key: "sold", label: "已售出" },
+    { key: "offline", label: "已下线" },
+    { key: "rejected", label: "已拒绝" },
+  ];
+
+  const filterCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: myProducts.length };
+    for (const p of myProducts) {
+      counts[p.status] = (counts[p.status] || 0) + 1;
+    }
+    return counts;
+  }, [myProducts]);
+
+  const filteredProducts = useMemo(() => {
+    if (productFilter === "all") return myProducts;
+    return myProducts.filter((p) => p.status === productFilter);
+  }, [myProducts, productFilter]);
 
   const orders = useMemo(() => {
     const list = [...mySales, ...myPurchases];
@@ -924,67 +952,108 @@ export function PostProfileTab(props: {
       </div>
 
       {profileTab === "published" && (
-        <div className="grid profile-grid">
-          {myProducts.length === 0 ? (
-            <p className="muted">暂无发布商品。</p>
-          ) : (
-            myProducts.map((p) => {
-              const badge = statusBadge(p);
+        <>
+          <div className="profile-filter-bar">
+            {productFilterOptions.map((opt) => {
+              const count = filterCounts[opt.key] ?? 0;
               return (
-                <article key={p.id} className="profile-product-card">
-                  <span className={`status-badge ${badge.kind}`}>
-                    {badge.text}
-                  </span>
-                  <img
-                    src={p.images?.[0]}
-                    alt={p.title}
-                    className="profile-product-thumb"
-                  />
-                  <h4 className="profile-product-title">{p.title}</h4>
-                  <div className="profile-product-price-row">
-                    <span className="profile-product-price">¥{p.price}</span>
-                    <span className="muted">{p.campus}</span>
-                  </div>
-                  {p.status === "rejected" && p.rejectionReason && (
-                    <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 6, padding: 8, marginBottom: 8, fontSize: 13 }}>
-                      <span style={{ color: "#dc2626", fontWeight: 600 }}>拒绝原因：</span>
-                      <span style={{ color: "#64748b" }}>{p.rejectionReason}</span>
-                    </div>
-                  )}
-                  <div className="profile-product-actions">
-                    <button className="small" onClick={() => loadDetail(p.id)}>
-                      查看详情
-                    </button>
-                    {p.status === "approved" && (
-                      <button
-                        className="small danger"
-                        onClick={() => markAsSold(p)}
-                      >
-                        标记已售
-                      </button>
-                    )}
-                    {(p.status === "pending" || p.status === "rejected" || p.status === "approved" || p.status === "offline") && (
-                      <button
-                        className="small"
-                        onClick={() => onEditProduct(p)}
-                      >
-                        编辑
-                      </button>
-                    )}
-                    {p.status !== "sold" && (
-                      <button
-                        className="small danger ghost"
-                        onClick={() => onDeleteProduct(p)}
-                      >
-                        删除
-                      </button>
-                    )}
-                  </div>
-                </article>
+                <button
+                  key={opt.key}
+                  type="button"
+                  className={
+                    productFilter === opt.key
+                      ? "profile-filter-chip active"
+                      : "profile-filter-chip"
+                  }
+                  onClick={() => setProductFilter(opt.key)}
+                >
+                  {opt.label}
+                  <span className="profile-filter-count">{count}</span>
+                </button>
               );
-            })
-          )}
-        </div>
+            })}
+          </div>
+
+          <div className="grid profile-grid">
+            {myProducts.length === 0 ? (
+              <p className="muted profile-empty-hint">暂无发布商品。</p>
+            ) : filteredProducts.length === 0 ? (
+              <p className="muted profile-empty-hint">
+                当前筛选下没有商品，试试切换其他状态。
+              </p>
+            ) : (
+              filteredProducts.map((p) => {
+                const badge = statusBadge(p);
+                const canEdit =
+                  p.status === "pending" ||
+                  p.status === "rejected" ||
+                  p.status === "approved" ||
+                  p.status === "offline";
+                return (
+                  <article key={p.id} className="profile-product-card">
+                    <span className={`status-badge ${badge.kind}`}>
+                      {badge.text}
+                    </span>
+                    <img
+                      src={p.images?.[0]}
+                      alt={p.title}
+                      className="profile-product-thumb"
+                    />
+                    <h4 className="profile-product-title">{p.title}</h4>
+                    <div className="profile-product-price-row">
+                      <span className="profile-product-price">¥{p.price}</span>
+                      <span className="profile-product-campus muted">{p.campus}</span>
+                    </div>
+                    {p.status === "rejected" && p.rejectionReason && (
+                      <div className="profile-reject-reason">
+                        <strong>拒绝原因：</strong>
+                        {p.rejectionReason}
+                      </div>
+                    )}
+                    <div className="profile-product-actions">
+                      <button
+                        type="button"
+                        className="profile-action-btn primary"
+                        onClick={() => loadDetail(p.id)}
+                      >
+                        查看详情
+                      </button>
+                      <div className="profile-action-row">
+                        {canEdit && (
+                          <button
+                            type="button"
+                            className="profile-action-btn"
+                            onClick={() => onEditProduct(p)}
+                          >
+                            编辑
+                          </button>
+                        )}
+                        {p.status === "approved" && (
+                          <button
+                            type="button"
+                            className="profile-action-btn accent"
+                            onClick={() => markAsSold(p)}
+                          >
+                            标记已售
+                          </button>
+                        )}
+                      </div>
+                      {p.status !== "sold" && (
+                        <button
+                          type="button"
+                          className="profile-action-btn danger-outline"
+                          onClick={() => onDeleteProduct(p)}
+                        >
+                          删除商品
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                );
+              })
+            )}
+          </div>
+        </>
       )}
 
       {profileTab === "orders" && (
@@ -1010,6 +1079,7 @@ export function PostProfileTab(props: {
                       {isSale ? "买家" : "卖家"}：{counterpart} ·{" "}
                       {new Date(o.createdAt).toLocaleString("zh-CN")}
                     </div>
+                    {o.rating != null && <OrderReviewPreview order={o} />}
                   </div>
                   <div className="order-side">
                     <div className="order-price">¥{o.price.toFixed(2)}</div>
@@ -1080,46 +1150,43 @@ export function CartTab(props: {
       {filteredFavorites.length === 0 ? (
         <p className="muted">暂无收藏商品，去商品广场添加感兴趣的商品吧。</p>
       ) : (
-        <div className="grid market-grid">
+        <div className="grid profile-grid">
           {filteredFavorites.map((p) => (
-            <article
-              key={p.id}
-              className="product-card product-card-horizontal"
-            >
-              <div className="product-media">
-                <img src={p.images?.[0]} alt={p.title} className="thumb" />
+            <article key={p.id} className="profile-product-card">
+              <img
+                src={p.images?.[0]}
+                alt={p.title}
+                className="profile-product-thumb"
+              />
+              <h4 className="profile-product-title">{p.title}</h4>
+              <div className="profile-product-price-row">
+                <span className="profile-product-price">¥{p.price}</span>
+                <span className="profile-product-campus muted">{p.campus}</span>
               </div>
-              <div className="product-body">
-                <div className="product-title-row">
-                  <h4>{p.title}</h4>
-                </div>
-                <p className="muted product-description">
-                  {p.description.slice(0, 96)}...
-                </p>
-                <div className="product-meta-row">
-                  <strong>¥{p.price}</strong>
-                  <span>{p.campus}</span>
-                </div>
-                <div className="product-action-grid">
+              <div className="profile-product-actions">
+                <button
+                  type="button"
+                  className="profile-action-btn primary"
+                  onClick={() => loadDetail(p.id)}
+                >
+                  查看详情
+                </button>
+                <div className="profile-action-row">
                   <button
-                    className="small action-btn"
-                    onClick={() => loadDetail(p.id)}
-                  >
-                    查看详情
-                  </button>
-                  <button
-                    className="small action-btn"
+                    type="button"
+                    className="profile-action-btn accent"
                     onClick={() => buyNow(p)}
                   >
                     购买
                   </button>
-                  <button
-                    className="small action-btn remove-btn"
-                    onClick={() => toggleFavorite(p.id)}
-                  >
-                    移除
-                  </button>
                 </div>
+                <button
+                  type="button"
+                  className="profile-action-btn danger-outline"
+                  onClick={() => toggleFavorite(p.id)}
+                >
+                  移除
+                </button>
               </div>
             </article>
           ))}
@@ -1363,6 +1430,18 @@ export function MessagesTab(props: {
   setChatInput: (value: string | ((prev: string) => string)) => void;
   setChatImageFile: (value: File | null) => void;
   sendChatMessage: () => void;
+  quickReplies?: string[];
+  onQuickReply?: (text: string) => void;
+  quickRepliesEditor?: {
+    custom: string[];
+    draft: string;
+    setDraft: (v: string) => void;
+    showEditor: boolean;
+    setShowEditor: (v: boolean) => void;
+    addCustom: () => void;
+    removeCustom: (text: string) => void;
+    saveCustom: () => void;
+  };
   buyNow: (product: Product) => void;
   orders: Order[];
   onSellerConfirmOrder: (orderId: string) => void;
@@ -1381,6 +1460,9 @@ export function MessagesTab(props: {
     setChatInput,
     setChatImageFile,
     sendChatMessage,
+    quickReplies = [],
+    onQuickReply,
+    quickRepliesEditor,
     buyNow,
     orders,
     onSellerConfirmOrder,
@@ -1581,84 +1663,133 @@ export function MessagesTab(props: {
                   系统通知会话，请在此查看交易进度并使用消息中的按钮操作。
                 </p>
               ) : (
-              <>
-              <div className="messages-input-icons">
-                <button
-                  className="icon-btn ghost"
-                  type="button"
-                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                >
-                  表情
-                </button>
-                <button
-                  className="icon-btn ghost"
-                  type="button"
-                  onClick={() =>
-                    document.getElementById("chat-image-input")?.click()
-                  }
-                >
-                  图片
-                </button>
-                {/* 移除文件按钮 */}
-              </div>
+                <>
+                  {quickReplies.length > 0 && onQuickReply && (
+                    <QuickReplyBar
+                      replies={quickReplies}
+                      onPick={onQuickReply}
+                      onManage={
+                        quickRepliesEditor
+                          ? () =>
+                            quickRepliesEditor.setShowEditor(
+                              !quickRepliesEditor.showEditor,
+                            )
+                          : undefined
+                      }
+                    />
+                  )}
+                  {quickRepliesEditor?.showEditor && (
+                    <div className="quick-reply-editor panel">
+                      <p className="muted">自定义快捷回复（最多 12 条）</p>
+                      <div className="quick-reply-editor-list">
+                        {quickRepliesEditor.custom.map((text) => (
+                          <span key={text} className="quick-reply-editor-item">
+                            {text}
+                            <button
+                              type="button"
+                              className="icon-btn ghost"
+                              onClick={() => quickRepliesEditor.removeCustom(text)}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                      <div className="quick-reply-editor-add">
+                        <input
+                          value={quickRepliesEditor.draft}
+                          placeholder="输入新的快捷回复"
+                          onChange={(e) => quickRepliesEditor.setDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") quickRepliesEditor.addCustom();
+                          }}
+                        />
+                        <button type="button" className="small" onClick={quickRepliesEditor.addCustom}>
+                          添加
+                        </button>
+                        <button type="button" className="small primary" onClick={quickRepliesEditor.saveCustom}>
+                          保存
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="messages-input-icons">
+                    <button
+                      className="icon-btn ghost"
+                      type="button"
+                      onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    >
+                      表情
+                    </button>
+                    <button
+                      className="icon-btn ghost"
+                      type="button"
+                      onClick={() =>
+                        document.getElementById("chat-image-input")?.click()
+                      }
+                    >
+                      图片
+                    </button>
+                    {/* 移除文件按钮 */}
+                  </div>
 
-              <textarea
-                className="messages-textarea"
-                placeholder="在这里输入消息..."
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    sendChatMessage();
-                  }
-                }}
-                rows={2}
-              />
-
-              {showEmojiPicker && (
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: "100%",
-                    right: "0",
-                    zIndex: 1000,
-                  }}
-                >
-                  <EmojiPicker
-                    onEmojiClick={(emojiData) => {
-                      setChatInput((prev) => prev + emojiData.emoji);
-                      setShowEmojiPicker(false);
+                  <textarea
+                    className="messages-textarea"
+                    placeholder="在这里输入消息..."
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        sendChatMessage();
+                      }
                     }}
-                    theme={Theme.AUTO}
-                    skinTonesDisabled
-                    searchDisabled
-                    previewConfig={{ showPreview: false }}
+                    rows={2}
                   />
-                </div>
-              )}
 
-              <div className="messages-input-bottom">
-                <input
-                  id="chat-image-input"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) =>
-                    setChatImageFile(e.target.files?.[0] || null)
-                  }
-                  className="messages-file-input"
-                  style={{ display: "none" }}
-                />
-                <button
-                  className="send-btn"
-                  type="button"
-                  onClick={sendChatMessage}
-                  disabled={!chatTarget}
-                >
-                  发送
-                </button>
-              </div>
-              </>
+                  {showEmojiPicker && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: "100%",
+                        right: "0",
+                        zIndex: 1000,
+                      }}
+                    >
+                      <EmojiPicker
+                        onEmojiClick={(emojiData) => {
+                          setChatInput((prev) => prev + emojiData.emoji);
+                          setShowEmojiPicker(false);
+                        }}
+                        theme={Theme.AUTO}
+                        skinTonesDisabled
+                        searchDisabled
+                        previewConfig={{ showPreview: false }}
+                      />
+                    </div>
+                  )}
+
+                  <div className="messages-input-bottom">
+                    <input
+                      id="chat-image-input"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) =>
+                        setChatImageFile(e.target.files?.[0] || null)
+                      }
+                      className="messages-file-input"
+                      style={{ display: "none" }}
+                    />
+                    <button
+                      className="send-btn"
+                      type="button"
+                      onClick={sendChatMessage}
+                      disabled={!chatTarget}
+                    >
+                      发送
+                    </button>
+                  </div>
+                </>
               )}
             </footer>
           </>

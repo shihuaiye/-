@@ -1,7 +1,22 @@
-export type Role = "admin" | "user";
-export type Status = "pending" | "approved" | "rejected" | "offline" | "sold";
+export type {
+  UserRole as Role,
+  User,
+  PublicUser,
+  Product,
+  ProductStatus as Status,
+  ProductMessage,
+  Order,
+  OrderReviewBody,
+  OrderStatus,
+  SellerPublicProfile,
+  QuickRepliesPayload,
+  RecommendationFeed,
+} from "@secondhand/shared/src/index.js";
+
 export type Category = "digital" | "book" | "daily" | "ticket" | "other";
-// 页面入口：普通用户按 5 个静态页面拆分（商品/收藏购物车/消息/个人中心/发布）
+
+export { BUILTIN_QUICK_REPLIES, SYSTEM_USER_ID } from "./constants.ts";
+
 export type Tab =
   | "market"
   | "cart"
@@ -11,45 +26,10 @@ export type Tab =
   | "manage"
   | "accounts";
 
-export type User = {
-  id: string;
-  username: string;
-  role: Role;
-  password?: string;
-  status?: "active" | "pending_review" | "rejected";
-  reviewNote?: string;
-  school?: string;
-};
-
-export type Product = {
-  id: string;
-  title: string;
-  description: string;
-  price: number;
-  category: Category;
-  images: string[];
-  campus: string;
-  brand?: string;
-  model?: string;
-  memory?: string;
-  latitude?: number;
-  longitude?: number;
-  status: Status;
-  rejectionReason?: string;
-  sellerId: string;
-  sellerName: string;
-  createdAt: string;
-};
-
-export type ProductMessage = {
-  id: string;
-  productId: string;
-  fromUserId: string;
-  fromUsername: string;
-  toUserId?: string;
-  toUsername?: string;
-  content: string;
-  createdAt: string;
+export type ProfileStats = {
+  trustScore: number;
+  likesCount: number;
+  ratingCount: number;
 };
 
 export type Conversation = {
@@ -62,48 +42,11 @@ export type Conversation = {
   isSystem?: boolean;
 };
 
-export type OrderStatus = "in_progress" | "completed" | "cancelled";
-
-export type Order = {
-  id: string;
-  productId: string;
-  productTitle: string;
-  buyerId: string;
-  buyerName: string;
-  sellerId: string;
-  sellerName: string;
-  price: number;
-  status: OrderStatus;
-  buyerConfirmed?: boolean;
-  sellerConfirmed?: boolean;
-  createdAt: string;
-  rating?: number;
-  ratedAt?: string;
-};
-
-export type SellerPublicProfile = {
-  id: string;
-  username: string;
-  trustScore: number;
-  school: string;
-  publishedCount: number;
-  completedOrderCount: number;
-  products: Product[];
-};
-
-export const SYSTEM_USER_ID = "system";
-
-export type ProfileStats = {
-  trustScore: number;
-  likesCount: number;
-  ratingCount: number;
-};
-
 export type PublishForm = {
   title: string;
   description: string;
   price: string;
-  category: Category;
+  category: import("@secondhand/shared/src/index.js").Product["category"];
   images: string[];
   school: string;
   schoolDetail: string;

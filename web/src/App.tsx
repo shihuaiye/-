@@ -18,75 +18,51 @@ import {
   PostPublishTab,
 } from "./components/tabs.tsx";
 import { api } from "./services/api.ts";
+import { useAuth } from "./hooks/useAuth.ts";
+import { useProducts } from "./hooks/useProducts.ts";
+import { useOrders } from "./hooks/useOrders.ts";
+import { useMessages } from "./hooks/useMessages.ts";
+import { useMarket } from "./hooks/useMarket.ts";
+import { useRecommendations } from "./hooks/useRecommendations.ts";
+import { useQuickReplies } from "./hooks/useQuickReplies.ts";
 import type {
   Category,
   Conversation,
-  Order,
-  Product,
-  ProductMessage,
   PublishForm,
-  ProfileStats,
   Role,
   SellerPublicProfile,
   Status,
   Tab,
   User,
 } from "./types";
-import { SYSTEM_USER_ID } from "./types";
-import { PAGE_SIZE, distanceKm, passwordStrength, toBase64, getProductLocation, PRESET_LOCATIONS } from "./utils.ts";
 
 export function App() {
-  const [token, setToken] = useState(localStorage.getItem("sh-token") || "");
-  const [user, setUser] = useState<User | null>(null);
-  const [allProducts, setAllProducts] = useState<Product[]>([]);
-  const [marketProducts, setMarketProducts] = useState<Product[]>([]);
-  const [myProducts, setMyProducts] = useState<Product[]>([]);
-  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const auth = useAuth();
+  const { token, user, authHeaders, login, register, logout, loginForm, setLoginForm, regForm, setRegForm, showRegister, setShowRegister, passwordStrength } = auth;
+
+  const products = useProducts(authHeaders, user);
+  const ordersHook = useOrders(authHeaders, user);
+  const messagesHook = useMessages(authHeaders, user, user?.id);
+  const { recommendations, recommendReason, loadRecommendations } = useRecommendations(authHeaders);
+  const quickReplies = useQuickReplies(authHeaders);
+
   const [activeTab, setActiveTab] = useState<Tab>("market");
   const [adminProductTab, setAdminProductTab] = useState<Status | "all">("all");
-  const [detail, setDetail] = useState<Product | null>(null);
-  const [messages, setMessages] = useState<ProductMessage[]>([]);
-  const [messageInput, setMessageInput] = useState("");
-  const [messageImageFile, setMessageImageFile] = useState<File | null>(null);
-  const [showRegister, setShowRegister] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [cart, setCart] = useState<string[]>([]);
-
-  const [keyword, setKeyword] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<Category | "all">("all");
-  const [sortBy, setSortBy] = useState<
-    "default" | "distance" | "price-asc" | "price-desc" | "time"
-  >("time");
-  const [page, setPage] = useState(1);
-
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [chatTarget, setChatTarget] = useState<Conversation | null>(null);
-  const [chatMessages, setChatMessages] = useState<ProductMessage[]>([]);
-  const [chatInput, setChatInput] = useState("");
-  const [chatImageFile, setChatImageFile] = useState<File | null>(null);
-  const [relatedProduct, setRelatedProduct] = useState<Product | null>(null);
-  const [lastSeenMessageTime, setLastSeenMessageTime] = useState("");
-
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [myPurchases, setMyPurchases] = useState<Order[]>([]);
-  const [mySales, setMySales] = useState<Order[]>([]);
-  const [profileStats, setProfileStats] = useState<ProfileStats>({
+  const [profileStats, setProfileStats] = useState({
     trustScore: 0,
     likesCount: 0,
     ratingCount: 0,
   });
-  const [pendingRatingOrder, setPendingRatingOrder] = useState<Order | null>(null);
-  const [recommendations, setRecommendations] = useState<Product[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [userLocation, setUserLocation] = useState<{
     latitude: number;
     longitude: number;
   } | null>(null);
-  const [accountDetail, setAccountDetail] = useState<User | null>(null);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [sellerProfile, setSellerProfile] = useState<SellerPublicProfile | null>(
-    null,
-  );
+  const [sellerProfile, setSellerProfile] = useState<SellerPublicProfile | null>(null);
   const [sellerProfileLoading, setSellerProfileLoading] = useState(false);
+  const [accountDetail, setAccountDetail] = useState<User | null>(null);
   const [accountForm, setAccountForm] = useState({
     username: "",
     password: "",
@@ -94,278 +70,31 @@ export function App() {
     status: "active" as "active" | "pending_review" | "rejected",
     reviewNote: "",
   });
-
-  const [loginForm, setLoginForm] = useState({ username: "", password: "" });
-  const [regForm, setRegForm] = useState({
-    username: "",
-    password: "",
-    role: "user" as Role,
-    school: "武汉大学",
-  });
   const [publishForm, setPublishForm] = useState<PublishForm>({
     title: "",
     description: "",
     price: "",
     category: "daily" as Category,
-    images: [] as string[],
+    images: [],
     school: "武汉大学",
-    schoolDetail: "",
-    campus: "",
+    schoolDetail: "信息学部",
+    campus: "武汉大学 · 信息学部",
+    latitude: 30.5289,
+    longitude: 114.3598,
     brand: "",
     model: "",
     memory: "",
-    latitude: undefined as number | undefined,
-    longitude: undefined as number | undefined,
   });
-  const [manualLocationLabel, setManualLocationLabel] = useState("");
 
-  const authHeaders = (): HeadersInit =>
-    token ? { Authorization: `Bearer ${token}` } : {};
   const favoritesKey = user ? `sh-favorites-${user.id}` : "sh-favorites-guest";
   const cartKey = user ? `sh-cart-${user.id}` : "sh-cart-guest";
-  const messageSeenKey = user ? `sh-msg-seen-${user.id}` : "sh-msg-seen-guest";
 
-  const fetchMe = async () => {
-    if (!token) return;
-    const json = await api.auth.me(authHeaders());
-    if (!json.success) return;
-    setUser(hydrateUser(json.data));
-  };
+  const market = useMarket(products.marketProducts, userLocation);
 
-  const hydrateUser = (user: User) => {
-    const school = localStorage.getItem(`sh-school-${user.username}`);
-    return school ? { ...user, school } : user;
-  };
-
-  const login = async () => {
-    const json = await api.auth.login(loginForm);
-    if (!json.success) return alert(json.message);
-    setToken(json.data.token);
-    setUser(hydrateUser(json.data.user));
-    localStorage.setItem("sh-token", json.data.token);
-    localStorage.setItem("sh-username", loginForm.username);
-    localStorage.setItem("sh-password", loginForm.password);
-  };
-
-  const register = async () => {
-    const strength = passwordStrength(regForm.password);
-    if (!strength.pass)
-      return alert("密码强度过弱，请至少满足8位并包含数字/字母组合");
-    const json = await api.auth.register(regForm);
-    if (!json.success) return alert(json.message);
-    if (regForm.school) {
-      localStorage.setItem(`sh-school-${regForm.username}`, regForm.school);
-    }
-    alert(json.message || "注册成功，请登录");
-    setShowRegister(false);
-    setRegForm({
-      username: "",
-      password: "",
-      role: "user",
-      school: "武汉大学",
-    });
-  };
-
-  const loadAllForAdmin = async () => {
-    const json = await api.products.all(authHeaders());
-    if (json.success) setAllProducts(json.data);
-  };
-
-  const loadMarket = async () => {
-    const json = await api.products.market(authHeaders());
-    if (json.success) setMarketProducts(json.data);
-  };
-
-  const loadMine = async () => {
-    const json = await api.products.mine(authHeaders());
-    if (json.success) setMyProducts(json.data);
-  };
-
-  const loadUsers = async () => {
-    if (user?.role !== "admin") return;
-    const json = await api.admin.users(authHeaders());
-    if (json.success) setAllUsers(json.data);
-  };
-
-  const loadDetail = async (id: string) => {
-    const json = await api.products.detail(id, authHeaders());
-    if (!json.success) return alert(json.message);
-    setDetail(json.data);
-    const msgJson = await api.messages.byProduct(id, authHeaders());
-    if (msgJson.success) setMessages(msgJson.data);
-  };
-
-  const sendMessage = async () => {
-    if (!detail) return;
-    const content = messageInput.trim();
-    const imageData = messageImageFile ? await toBase64(messageImageFile) : "";
-    if (!content && !imageData) return;
-    const finalContent = imageData
-      ? content
-        ? `${content}\n[图片: ${imageData}]`
-        : `[图片: ${imageData}]`
-      : content;
-    const json = await api.messages.sendToProduct(
-      detail.id,
-      finalContent,
-      authHeaders(),
-    );
-    if (!json.success) return alert(json.message);
-    setMessageInput("");
-    setMessageImageFile(null);
-    await loadDetail(detail.id);
-  };
-
-  const publish = async () => {
-    console.log("publish called", { publishForm });
-    if (!publishForm.images.length) {
-      alert("请至少选择一张商品图片");
-      return;
-    }
-    if (!publishForm.title.trim()) {
-      alert("请填写商品名称");
-      return;
-    }
-    if (!publishForm.description.trim()) {
-      alert("请填写商品描述");
-      return;
-    }
-    const priceNum = Number(publishForm.price);
-    if (!publishForm.price.trim() || !Number.isFinite(priceNum) || priceNum <= 0) {
-      alert("请填写有效价格");
-      return;
-    }
-    try {
-      const payload = {
-        title: publishForm.title,
-        description: publishForm.description,
-        price: priceNum,
-        category: publishForm.category,
-        images: publishForm.images,
-        campus: `${publishForm.school}${publishForm.schoolDetail ? ` · ${publishForm.schoolDetail}` : ""}`,
-        brand: publishForm.brand || undefined,
-        model: publishForm.model || undefined,
-        memory: publishForm.memory || undefined,
-        latitude: publishForm.latitude,
-        longitude: publishForm.longitude,
-      };
-      console.log("sending payload", payload);
-      const json = await api.products.create(payload, authHeaders());
-      console.log("response", json);
-      if (!json.success) {
-        alert(json.message || "发布失败");
-        return;
-      }
-      alert("发布成功，等待审核");
-      setPublishForm({
-        title: "",
-        description: "",
-        price: "",
-        category: "daily",
-        images: [],
-        school: "武汉大学",
-        schoolDetail: "",
-        campus: "",
-        brand: "",
-        model: "",
-        memory: "",
-        latitude: undefined,
-        longitude: undefined,
-      });
-      await Promise.all([loadMine(), loadMarket(), loadAllForAdmin()]);
-    } catch (error) {
-      console.error("publish error", error);
-      alert("发布失败，请检查网络连接");
-    }
-  };
-
-  const audit = async (id: string, action: "approve" | "reject") => {
-    let reason = "";
-    if (action === "reject") {
-      reason = prompt("请输入拒绝理由（必填）：")?.trim() || "";
-      if (!reason) {
-        alert("拒绝时必须填写理由");
-        return;
-      }
-    }
-    const json = await api.products.audit(id, action, reason, authHeaders());
-    if (!json.success) return alert(json.message);
-    await Promise.all([loadAllForAdmin(), loadMarket()]);
-  };
-
-  const toggleStatus = async (id: string, status: "approved" | "offline") => {
-    const json = await api.products.status(id, status, authHeaders());
-    if (!json.success) return alert(json.message);
-    await Promise.all([loadAllForAdmin(), loadMarket()]);
-  };
-
-  const reviewAdminUser = async (id: string, action: "approve" | "reject") => {
-    const note =
-      prompt(
-        action === "approve" ? "审核备注（可选）" : "拒绝理由（建议填写）",
-      ) || "";
-    const json = await api.admin.reviewUser(id, action, note, authHeaders());
-    if (!json.success) return alert(json.message);
-    await loadUsers();
-  };
-
-  const deleteUser = async (id: string, username: string) => {
-    if (!confirm(`确认删除账号 ${username}？该操作不可撤销。`)) return;
-    const json = await api.admin.deleteUser(id, authHeaders());
-    if (!json.success) return alert(json.message);
-    await loadUsers();
-  };
-
-  const loadAccountDetail = async (id: string) => {
-    const json = await api.admin.userDetail(id, authHeaders());
-    if (!json.success) return alert(json.message);
-    setAccountDetail(json.data);
-    setAccountForm({
-      username: json.data.username || "",
-      password: json.data.password || "",
-      role: json.data.role || "user",
-      status: json.data.status || "active",
-      reviewNote: json.data.reviewNote || "",
-    });
-  };
-
-  const saveAccountDetail = async () => {
-    if (!accountDetail) return;
-    const json = await api.admin.saveUser(
-      accountDetail.id,
-      accountForm,
-      authHeaders(),
-    );
-    if (!json.success) return alert(json.message);
-    alert("账号信息已更新");
-    await loadUsers();
-    setAccountDetail(json.data);
-  };
-
-  const markMessagesAsSeen = () => {
-    const now = new Date().toISOString();
-    setLastSeenMessageTime(now);
-    localStorage.setItem(messageSeenKey, now);
-  };
-
-  const pickCurrentLocation = () => {
-    if (!navigator.geolocation) return alert("当前浏览器不支持定位");
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const latitude = position.coords.latitude;
-        const longitude = position.coords.longitude;
-        setUserLocation({ latitude, longitude });
-        setPublishForm((prev) => ({ ...prev, latitude, longitude }));
-      },
-      () => alert("定位失败，请检查定位权限"),
-    );
-  };
-
-  const onPublishImagesSelected = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    const imageFiles = Array.from(files).slice(0, 6);
-    const images = await Promise.all(imageFiles.map((f) => toBase64(f)));
-    setPublishForm((prev) => ({ ...prev, images }));
+  const loadProfileStats = async () => {
+    if (!token || !user) return;
+    const json = await api.profile.stats(authHeaders());
+    if (json.success) setProfileStats(json.data);
   };
 
   const loadFavorites = async () => {
@@ -377,10 +106,10 @@ export function App() {
     }
   };
 
-  const loadProfileStats = async () => {
-    if (!token || !user) return;
-    const json = await api.profile.stats(authHeaders());
-    if (json.success) setProfileStats(json.data);
+  const loadUsers = async () => {
+    if (user?.role !== "admin") return;
+    const json = await api.admin.users(authHeaders());
+    if (json.success) setAllUsers(json.data);
   };
 
   const toggleFavorite = async (id: string) => {
@@ -398,213 +127,68 @@ export function App() {
   };
 
   const toggleCart = (id: string) => {
-    const next = cart.includes(id)
-      ? cart.filter((x) => x !== id)
-      : [...cart, id];
+    const next = cart.includes(id) ? cart.filter((x) => x !== id) : [...cart, id];
     setCart(next);
     localStorage.setItem(cartKey, JSON.stringify(next));
   };
 
-  const applyManualLocation = () => {
-    const location = PRESET_LOCATIONS.find(
-      (loc) => loc.label === manualLocationLabel,
-    );
-    if (!location) return;
-    setPublishForm((prev) => ({
-      ...prev,
-      campus: location.campus,
-      latitude: location.latitude,
-      longitude: location.longitude,
-    }));
-    setUserLocation({
-      latitude: location.latitude,
-      longitude: location.longitude,
-    });
+  const loadDetail = async (id: string) => {
+    const p = await products.loadDetail(id);
+    if (!p) return;
+    const msgJson = await api.messages.byProduct(id, authHeaders());
+    if (msgJson.success) messagesHook.setMessages(msgJson.data);
   };
 
-  const loadConversations = async () => {
-    if (!token || !user) return;
-    const json = await api.conversations.list(authHeaders());
-    if (json.success) setConversations(json.data);
+  const sendMessage = async () => {
+    if (!products.detail) return;
+    await messagesHook.sendProductMessage(products.detail.id);
   };
 
-  const openChat = async (target: Conversation) => {
-    setChatTarget(target);
-    markMessagesAsSeen();
-    const json = await api.conversations.detail(target.userId, authHeaders());
-    if (json.success) setChatMessages(json.data);
-  };
-
-  const loadChatMessages = async (targetUserId: string) => {
-    const json = await api.conversations.detail(targetUserId, authHeaders());
-    if (json.success) setChatMessages(json.data);
-  };
-
-  const sendChatMessage = async () => {
-    if (!chatTarget) return;
-    const content = chatInput.trim();
-    const imageData = chatImageFile ? await toBase64(chatImageFile) : "";
-
-    if (!content && !imageData) {
-      alert("请输入消息内容或选择图片");
-      return;
+  const publish = async () => {
+    const ok = await products.publish(publishForm);
+    if (ok) {
+      setPublishForm({
+        title: "",
+        description: "",
+        price: "",
+        category: "daily",
+        images: [],
+        school: "武汉大学",
+        schoolDetail: "信息学部",
+        campus: "武汉大学 · 信息学部",
+        latitude: 30.5289,
+        longitude: 114.3598,
+        brand: "",
+        model: "",
+        memory: "",
+      });
     }
-
-    let finalContent = content;
-    if (imageData) {
-      if (content) {
-        finalContent = `${content}\n[图片: ${imageData}]`;
-      } else {
-        finalContent = `[图片: ${imageData}]`;
-      }
-    }
-
-    const json = await api.conversations.send(
-      chatTarget.userId,
-      finalContent,
-      authHeaders(),
-    );
-    if (!json.success) return alert(json.message);
-    setChatInput("");
-    setChatImageFile(null);
-    await openChat(chatTarget);
   };
 
-  useEffect(() => {
-    try {
-      if (chatMessages.length > 0) {
-        setTimeout(() => {
-          const container = document.getElementById("chat-messages-container");
-          if (container) {
-            container.scrollTop = container.scrollHeight;
-          }
-        }, 100);
-      }
-    } catch (error) {
-      console.error("Auto scroll error:", error);
-    }
-  }, [chatMessages]);
-
-  useEffect(() => {
-    if (!token || !user) return;
-    const timer = window.setInterval(() => {
-      loadConversations().catch(console.error);
-      loadOrders().catch(console.error);
-      loadRecommendations().catch(console.error);
-      loadFavorites().catch(console.error);
-      loadProfileStats().catch(console.error);
-      if (detail) {
-        loadDetail(detail.id).catch(console.error);
-      }
-      if (chatTarget) {
-        loadChatMessages(chatTarget.userId).catch(console.error);
-      }
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, [token, user, detail?.id, chatTarget?.userId]);
-
-  const markAsSold = async (product: Product) => {
-    if (!confirm(`确认将"${product.title}"标记为已售出？`)) return;
-    const buyerName =
-      prompt("请输入买家昵称（可留空，默认系统模拟成交）")?.trim() ||
-      "系统模拟";
-    const json = await api.products.soldBySeller(
-      product.id,
-      buyerName,
-      authHeaders(),
-    );
-    if (!json.success) return alert(json.message);
-    alert("商品已标记为售出");
-    await Promise.all([
-      loadMine(),
-      loadMarket(),
-      loadAllForAdmin(),
-      loadOrders(),
-    ]);
-  };
-
-  const deleteMyProduct = async (product: Product) => {
-    if (!confirm(`确认删除商品"${product.title}"？此操作不可撤销。`)) return;
-    const json = await api.products.delete(product.id, authHeaders());
-    if (!json.success) return alert(json.message);
-    alert("商品已删除");
-    await Promise.all([loadMine(), loadMarket(), loadAllForAdmin()]);
-  };
-
-  const updateMyProduct = async (updatedFields: Partial<Product>) => {
-    if (!editingProduct) return;
-    const json = await api.products.update(editingProduct.id, updatedFields, authHeaders());
-    if (!json.success) return alert(json.message);
-    alert("商品已更新，等待审核");
-    setEditingProduct(null);
-    await Promise.all([loadMine(), loadMarket(), loadAllForAdmin()]);
+  const onPublishImagesSelected = async (files: FileList | null) => {
+    const images = await products.onPublishImagesSelected(files);
+    if (images.length) setPublishForm((prev) => ({ ...prev, images }));
   };
 
   const refreshAfterOrderChange = () =>
     Promise.all([
-      loadMarket(),
-      loadMine(),
-      loadOrders(),
-      loadConversations(),
-      loadAllForAdmin(),
-      chatTarget ? loadChatMessages(chatTarget.userId) : Promise.resolve(),
+      products.loadMarket(),
+      products.loadMine(),
+      ordersHook.loadOrders(),
+      messagesHook.loadConversations(),
+      products.loadAllForAdmin(),
+      messagesHook.chatTarget
+        ? messagesHook.loadChatMessages(messagesHook.chatTarget.userId)
+        : Promise.resolve(),
     ]).catch(console.error);
 
-  const openSystemChat = async () => {
-    const systemTarget: Conversation = {
-      userId: SYSTEM_USER_ID,
-      username: "系统通知",
-      lastMessage: "",
-      lastTime: new Date().toISOString(),
-      unreadCount: 0,
-      isSystem: true,
-    };
-    setActiveTab("messages");
-    await openChat(systemTarget);
-  };
-
-  const buyFromCart = async (product: Product) => {
-    if (!user) return;
-    if (product.sellerId === user.id) {
-      alert("不能购买自己发布的商品");
-      return;
-    }
-    if (!confirm(`确认购买「${product.title}」吗？`)) return;
-    const json = await api.products.purchase(product.id, authHeaders());
-    if (!json.success) return alert(json.message);
-    alert("下单成功，已通知卖家确认，请在系统通知或订单列表查看进度");
+  const buyFromCart = async (product: Parameters<typeof products.buyNow>[0]) => {
+    const ok = await products.buyNow(product);
+    if (!ok) return;
     toggleCart(product.id);
     await refreshAfterOrderChange();
-    await openSystemChat();
-  };
-
-  const handleSellerConfirmOrder = async (orderId: string) => {
-    const json = await api.orders.sellerConfirm(orderId, authHeaders());
-    if (!json.success) return alert(json.message);
-    alert(
-      json.data.order.status === "completed"
-        ? "交易已完成"
-        : "已确认，系统已通知买家",
-    );
-    await refreshAfterOrderChange();
-  };
-
-  const handleSellerRejectOrder = async (orderId: string) => {
-    if (!confirm("确定拒绝该笔交易吗？")) return;
-    const json = await api.orders.sellerReject(orderId, authHeaders());
-    if (!json.success) return alert(json.message);
-    alert("已拒绝交易");
-    await refreshAfterOrderChange();
-  };
-
-  const handleBuyerConfirmOrder = async (orderId: string) => {
-    const json = await api.orders.buyerConfirm(orderId, authHeaders());
-    if (!json.success) return alert(json.message);
-    alert("交易已完成");
-    if (json.data.order.buyerId === user?.id) {
-      setPendingRatingOrder(json.data.order);
-    }
-    await refreshAfterOrderChange();
+    setActiveTab("messages");
+    await messagesHook.openSystemChat();
   };
 
   const openSellerProfile = async (sellerId: string) => {
@@ -616,97 +200,78 @@ export function App() {
     setSellerProfile(json.data);
   };
 
-  const loadOrders = async () => {
-    if (!token || !user) return;
-    const json = await api.orders.list(authHeaders());
-    if (json.success) {
-      setOrders(json.data);
-      setMyPurchases(json.data.filter((o: Order) => o.buyerId === user!.id));
-      setMySales(json.data.filter((o: Order) => o.sellerId === user!.id));
-    }
-  };
-
-  const rateOrder = async (order: Order, rating: number) => {
-    const json = await api.orders.rate(order.id, rating, authHeaders());
+  const loadAccountDetail = async (id: string) => {
+    const json = await api.admin.userDetail(id, authHeaders());
     if (!json.success) return alert(json.message);
-    alert("评分提交成功");
-    setPendingRatingOrder(null);
-    await Promise.all([loadOrders(), loadProfileStats()]);
-  };
-
-  const loadRecommendations = async () => {
-    if (!token || !user) return;
-    const json = await api.recommendations.list(authHeaders());
-    if (json.success) setRecommendations(json.data);
-  };
-
-  const logout = () => {
-    localStorage.removeItem("sh-token");
-    localStorage.removeItem("sh-username");
-    localStorage.removeItem("sh-password");
-    setToken("");
-    setUser(null);
-    setDetail(null);
-    setFavorites([]);
-    setCart([]);
-    setProfileStats({
-      trustScore: 0,
-      likesCount: 0,
-      ratingCount: 0,
+    setAccountDetail(json.data);
+    setAccountForm({
+      username: json.data.username || "",
+      password: "",
+      role: json.data.role || "user",
+      status: json.data.status || "active",
+      reviewNote: json.data.reviewNote || "",
     });
-    setPendingRatingOrder(null);
   };
 
-  const filteredMarket = useMemo(() => {
-    const byKeyword = marketProducts.filter((p) =>
-      `${p.title}${p.description}${p.campus}`
-        .toLowerCase()
-        .includes(keyword.toLowerCase()),
-    );
-    let result =
-      categoryFilter === "all"
-        ? byKeyword
-        : byKeyword.filter((p) => p.category === categoryFilter);
-    if (sortBy === "price-asc") {
-      result = [...result].sort((a, b) => a.price - b.price);
-    } else if (sortBy === "price-desc") {
-      result = [...result].sort((a, b) => b.price - a.price);
-    } else if (sortBy === "time") {
-      result = [...result].sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
-    } else if (sortBy === "distance" && userLocation) {
-      result = [...result].sort((a, b) => {
-        const locA = getProductLocation(a);
-        const locB = getProductLocation(b);
-        if (!locA && !locB) return 0;
-        if (!locA) return 1;
-        if (!locB) return -1;
-        return distanceKm(userLocation, locA) - distanceKm(userLocation, locB);
-      });
+  const saveAccountDetail = async () => {
+    if (!accountDetail) return;
+    const json = await api.admin.saveUser(accountDetail.id, accountForm, authHeaders());
+    if (!json.success) return alert(json.message);
+    alert("账号信息已更新");
+    await loadUsers();
+    setAccountDetail(json.data);
+  };
+
+  const reviewAdminUser = async (id: string, action: "approve" | "reject") => {
+    const note =
+      prompt(action === "approve" ? "审核备注（可选）" : "拒绝理由（建议填写）") || "";
+    const json = await api.admin.reviewUser(id, action, note, authHeaders());
+    if (!json.success) return alert(json.message);
+    await loadUsers();
+  };
+
+  const deleteUser = async (id: string, username: string) => {
+    if (
+      !confirm(
+        `确认删除账号「${username}」？将同时删除其发布的全部商品，该操作不可撤销。`,
+      )
+    ) {
+      return;
     }
-    return result;
-  }, [marketProducts, keyword, categoryFilter, sortBy, userLocation]);
+    const json = await api.admin.deleteUser(id, authHeaders());
+    if (!json.success) return alert(json.message);
+    alert(json.message || "账号及关联商品已删除");
+    await Promise.all([
+      loadUsers(),
+      products.loadAllForAdmin(),
+      products.loadMarket(),
+      products.loadMine(),
+    ]);
+  };
 
-  const pagedMarket = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return filteredMarket.slice(start, start + PAGE_SIZE);
-  }, [filteredMarket, page]);
+  const pickCurrentLocation = () => {
+    if (!navigator.geolocation) return alert("当前浏览器不支持定位");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        setUserLocation({ latitude, longitude });
+        setPublishForm((prev) => ({ ...prev, latitude, longitude }));
+      },
+      () => alert("定位失败，请检查定位权限"),
+    );
+  };
 
-  const pageCount = Math.max(1, Math.ceil(filteredMarket.length / PAGE_SIZE));
-  const favoriteProducts = marketProducts.filter((p) =>
-    favorites.includes(p.id),
-  );
-  const cartProducts = marketProducts.filter((p) => cart.includes(p.id));
+  const favoriteProducts = products.marketProducts.filter((p) => favorites.includes(p.id));
+
   const adminFilteredProducts =
     adminProductTab === "all"
-      ? allProducts
-      : allProducts.filter((p) => p.status === adminProductTab);
+      ? products.allProducts
+      : products.allProducts.filter((p) => p.status === adminProductTab);
 
   const adminStats = useMemo(() => {
     const count = (status: Status) =>
-      allProducts.filter((p) => p.status === status).length;
+      products.allProducts.filter((p) => p.status === status).length;
     return {
       pending: count("pending"),
       approved: count("approved"),
@@ -714,34 +279,37 @@ export function App() {
       offline: count("offline"),
       sold: count("sold"),
     };
-  }, [allProducts]);
+  }, [products.allProducts]);
 
-  const hasUnreadMessages = useMemo(() => {
-    if (!conversations.length) return false;
-    return conversations.some((conv) => conv.lastTime > lastSeenMessageTime);
-  }, [conversations, lastSeenMessageTime]);
+  const hasUnreadMessages = useMemo(
+    () =>
+      messagesHook.conversations.some(
+        (conv) => conv.lastTime > messagesHook.lastSeenMessageTime,
+      ),
+    [messagesHook.conversations, messagesHook.lastSeenMessageTime],
+  );
 
-  useEffect(() => {
-    fetchMe();
-  }, [token]);
+  const bootstrap = async () => {
+    await Promise.all([
+      products.loadMarket(),
+      products.loadMine(),
+      messagesHook.loadConversations(),
+      ordersHook.loadOrders(),
+      loadRecommendations(),
+      loadFavorites(),
+      loadProfileStats(),
+      quickReplies.loadQuickReplies(),
+    ]);
+    if (user?.role === "admin") {
+      await Promise.all([products.loadAllForAdmin(), loadUsers()]);
+      setActiveTab("manage");
+    }
+  };
 
   useEffect(() => {
     if (!token || !user) return;
-    loadMarket().catch(console.error);
-    loadMine().catch(console.error);
-    loadConversations().catch(console.error);
-    loadOrders().catch(console.error);
-    loadRecommendations().catch(console.error);
-    loadFavorites().catch(console.error);
-    loadProfileStats().catch(console.error);
-    if (user.role === "admin") {
-      loadAllForAdmin().catch(console.error);
-      loadUsers().catch(console.error);
-      setActiveTab("manage");
-    } else {
-      setActiveTab("market");
-    }
-  }, [token, user?.role]);
+    bootstrap().catch(console.error);
+  }, [token, user?.id, user?.role]);
 
   useEffect(() => {
     if (!token || !user || userLocation || !navigator.geolocation) return;
@@ -752,7 +320,7 @@ export function App() {
           longitude: position.coords.longitude,
         });
       },
-      () => { },
+      () => undefined,
     );
   }, [token, user?.id, userLocation]);
 
@@ -760,26 +328,43 @@ export function App() {
     if (!user) return;
     setFavorites(JSON.parse(localStorage.getItem(favoritesKey) || "[]"));
     setCart(JSON.parse(localStorage.getItem(cartKey) || "[]"));
-    setLastSeenMessageTime(localStorage.getItem(messageSeenKey) || "");
   }, [user?.id]);
 
   useEffect(() => {
-    if (activeTab === "messages" && conversations.length > 0) {
-      markMessagesAsSeen();
+    if (activeTab === "messages" && messagesHook.conversations.length > 0) {
+      messagesHook.markMessagesAsSeen();
     }
-  }, [activeTab, conversations.length]);
+  }, [activeTab, messagesHook.conversations.length]);
 
   useEffect(() => {
-    setPage(1);
-  }, [keyword, categoryFilter, sortBy]);
+    market.setPage(1);
+  }, [market.keyword, market.categoryFilter, market.sortBy]);
 
   useEffect(() => {
-    const savedUsername = localStorage.getItem("sh-username");
-    const savedPassword = localStorage.getItem("sh-password");
-    if (savedUsername) {
-      setLoginForm({ username: savedUsername, password: savedPassword || "" });
+    if (!token || !user) return;
+    const timer = window.setInterval(() => {
+      messagesHook.loadConversations().catch(console.error);
+      ordersHook.loadOrders().catch(console.error);
+      loadRecommendations().catch(console.error);
+      loadFavorites().catch(console.error);
+      loadProfileStats().catch(console.error);
+      if (products.detail) loadDetail(products.detail.id).catch(console.error);
+      if (messagesHook.chatTarget) {
+        messagesHook.loadChatMessages(messagesHook.chatTarget.userId).catch(console.error);
+      }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [token, user?.id, products.detail?.id, messagesHook.chatTarget?.userId]);
+
+  const openChatWithProduct = async (target: Conversation) => {
+    await messagesHook.openChat(target);
+    if (target.productId) {
+      const json = await api.products.detail(target.productId, authHeaders());
+      if (json.success) messagesHook.setRelatedProduct(json.data);
+    } else {
+      messagesHook.setRelatedProduct(null);
     }
-  }, []);
+  };
 
   if (!token || !user) {
     const strength = passwordStrength(regForm.password);
@@ -803,14 +388,15 @@ export function App() {
       <AppSidebar
         user={user}
         activeTab={activeTab}
-        conversationsCount={conversations.length}
+        conversationsCount={messagesHook.conversations.length}
         hasUnreadMessages={hasUnreadMessages}
         onTabChange={setActiveTab}
         onOpenMessages={() => {
           setActiveTab("messages");
-          loadConversations();
-          markMessagesAsSeen();
+          messagesHook.loadConversations();
+          messagesHook.markMessagesAsSeen();
         }}
+        onLogout={logout}
       />
 
       <main className="main">
@@ -822,51 +408,47 @@ export function App() {
             </div>
           </header>
         )}
-
         {activeTab === "cart" && (
           <header className="page-header">
             <div className="page-title">收藏与购物车</div>
           </header>
         )}
-
         {activeTab === "profile" && (
-          <header className="page-header">
+          <header className="page-header profile-page-header">
             <div className="page-title">个人中心</div>
             <div className="page-actions">
-              <button onClick={logout}>退出登录</button>
+              <button className="btn-ghost" onClick={logout}>
+                退出登录
+              </button>
             </div>
           </header>
         )}
-
         {activeTab === "publish" && (
           <header className="page-header">
             <div className="page-title">发布闲置</div>
           </header>
         )}
 
-        <div
-          className={
-            activeTab === "messages" ? "content-no-pad" : "content-scroll"
-          }
-        >
+        <div className={activeTab === "messages" ? "content-no-pad" : "content-scroll"}>
           {activeTab === "market" && (
             <MarketTab
-              keyword={keyword}
-              setKeyword={setKeyword}
-              categoryFilter={categoryFilter}
-              setCategoryFilter={setCategoryFilter}
-              sortBy={sortBy}
-              setSortBy={setSortBy}
+              keyword={market.keyword}
+              setKeyword={market.setKeyword}
+              categoryFilter={market.categoryFilter}
+              setCategoryFilter={market.setCategoryFilter}
+              sortBy={market.sortBy}
+              setSortBy={market.setSortBy}
               userLocation={userLocation}
               pickCurrentLocation={pickCurrentLocation}
-              pagedMarket={pagedMarket}
+              pagedMarket={market.pagedMarket}
               favorites={favorites}
               toggleFavorite={toggleFavorite}
               loadDetail={loadDetail}
-              page={page}
-              pageCount={pageCount}
-              setPage={setPage}
+              page={market.page}
+              pageCount={market.pageCount}
+              setPage={market.setPage}
               recommendations={recommendations}
+              recommendReason={recommendReason}
               cart={cart}
               toggleCart={toggleCart}
             />
@@ -884,15 +466,15 @@ export function App() {
           {activeTab === "profile" && (
             <PostProfileTab
               user={user}
-              myProducts={myProducts}
-              markAsSold={markAsSold}
+              myProducts={products.myProducts}
+              markAsSold={products.markAsSold}
               loadDetail={loadDetail}
-              mySales={mySales}
-              myPurchases={myPurchases}
+              mySales={ordersHook.mySales}
+              myPurchases={ordersHook.myPurchases}
               profileStats={profileStats}
-              onRateOrder={setPendingRatingOrder}
-              onDeleteProduct={deleteMyProduct}
-              onEditProduct={setEditingProduct}
+              onRateOrder={ordersHook.setPendingRatingOrder}
+              onDeleteProduct={products.deleteMyProduct}
+              onEditProduct={products.setEditingProduct}
             />
           )}
 
@@ -902,7 +484,6 @@ export function App() {
               setPublishForm={setPublishForm}
               onPublishImagesSelected={onPublishImagesSelected}
               publish={publish}
-              presetLocations={PRESET_LOCATIONS}
             />
           )}
 
@@ -911,10 +492,10 @@ export function App() {
               adminStats={adminStats}
               adminProductTab={adminProductTab}
               setAdminProductTab={setAdminProductTab}
-              allProducts={allProducts}
+              allProducts={products.allProducts}
               adminFilteredProducts={adminFilteredProducts}
-              audit={audit}
-              toggleStatus={toggleStatus}
+              audit={products.audit}
+              toggleStatus={products.toggleStatus}
               loadDetail={loadDetail}
             />
           )}
@@ -931,39 +512,61 @@ export function App() {
 
           {activeTab === "messages" && (
             <MessagesTab
-              conversations={conversations}
-              lastSeenMessageTime={lastSeenMessageTime}
-              openChat={openChat}
-              chatTarget={chatTarget}
-              relatedProduct={relatedProduct}
-              chatMessages={chatMessages}
+              conversations={messagesHook.conversations}
+              lastSeenMessageTime={messagesHook.lastSeenMessageTime}
+              openChat={openChatWithProduct}
+              chatTarget={messagesHook.chatTarget}
+              relatedProduct={messagesHook.relatedProduct}
+              chatMessages={messagesHook.chatMessages}
               user={user}
-              chatInput={chatInput}
-              setChatInput={setChatInput}
-              setChatImageFile={setChatImageFile}
-              sendChatMessage={sendChatMessage}
+              chatInput={messagesHook.chatInput}
+              setChatInput={messagesHook.setChatInput}
+              setChatImageFile={messagesHook.setChatImageFile}
+              sendChatMessage={messagesHook.sendChatMessage}
+              quickReplies={quickReplies.allReplies}
+              onQuickReply={messagesHook.sendQuickReply}
+              quickRepliesEditor={{
+                custom: quickReplies.custom,
+                draft: quickReplies.draft,
+                setDraft: quickReplies.setDraft,
+                showEditor: quickReplies.showEditor,
+                setShowEditor: quickReplies.setShowEditor,
+                addCustom: quickReplies.addCustom,
+                removeCustom: quickReplies.removeCustom,
+                saveCustom: quickReplies.saveCustom,
+              }}
               buyNow={buyFromCart}
-              orders={orders}
-              onSellerConfirmOrder={handleSellerConfirmOrder}
-              onSellerRejectOrder={handleSellerRejectOrder}
-              onBuyerConfirmOrder={handleBuyerConfirmOrder}
+              orders={ordersHook.orders}
+              onSellerConfirmOrder={async (id) => {
+                await ordersHook.handleSellerConfirmOrder(id);
+                await refreshAfterOrderChange();
+              }}
+              onSellerRejectOrder={async (id) => {
+                await ordersHook.handleSellerRejectOrder(id);
+                await refreshAfterOrderChange();
+              }}
+              onBuyerConfirmOrder={async (id) => {
+                await ordersHook.handleBuyerConfirmOrder(id);
+                await refreshAfterOrderChange();
+              }}
             />
           )}
         </div>
       </main>
 
       <ProductDetailModal
-        detail={detail}
-        setDetail={setDetail}
+        detail={products.detail}
+        setDetail={products.setDetail}
         favorites={favorites}
         toggleFavorite={toggleFavorite}
         user={user}
-        messages={messages}
-        setMessageImageFile={setMessageImageFile}
-        messageInput={messageInput}
-        setMessageInput={setMessageInput}
+        messages={messagesHook.messages}
+        setMessageImageFile={messagesHook.setMessageImageFile}
+        messageInput={messagesHook.messageInput}
+        setMessageInput={messagesHook.setMessageInput}
         sendMessage={sendMessage}
-        onSellerClick={(sellerId) => openSellerProfile(sellerId)}
+        onSellerClick={openSellerProfile}
+        onBuyNow={buyFromCart}
       />
 
       <SellerProfileModal
@@ -985,18 +588,20 @@ export function App() {
       />
 
       <RatingModal
-        order={pendingRatingOrder}
-        onClose={() => setPendingRatingOrder(null)}
-        onSubmit={(rating) => {
-          if (!pendingRatingOrder) return;
-          return rateOrder(pendingRatingOrder, rating);
+        order={ordersHook.pendingRatingOrder}
+        onClose={() => ordersHook.setPendingRatingOrder(null)}
+        onSubmit={(review) => {
+          if (!ordersHook.pendingRatingOrder) return;
+          return ordersHook
+            .rateOrder(ordersHook.pendingRatingOrder, review)
+            .then(loadProfileStats);
         }}
       />
 
       <EditProductModal
-        product={editingProduct}
-        setProduct={setEditingProduct}
-        onSave={updateMyProduct}
+        product={products.editingProduct}
+        setProduct={products.setEditingProduct}
+        onSave={products.updateMyProduct}
       />
     </div>
   );

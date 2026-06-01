@@ -1,15 +1,12 @@
+import "./loadEnv.js";
 import fs from "fs/promises";
 import path from "path";
 import mysql from "mysql2/promise";
 import { User, Product, ProductMessage } from "@secondhand/shared/src/index.js";
+import { env } from "./config/env.js";
+import { hashPassword } from "./auth/password.js";
 
-const DB_CONFIG = {
-  host: process.env.DB_HOST || "localhost",
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "******",
-  database: process.env.DB_NAME || "secondhand",
-};
+const DB_CONFIG = env.db;
 
 const DATA_DIR = path.join(process.cwd(), "src", "data");
 
@@ -143,12 +140,15 @@ async function migrate() {
     const usersRaw = await fs.readFile(path.join(DATA_DIR, "users.json"), "utf-8");
     const users: User[] = JSON.parse(usersRaw);
     for (const u of users) {
+      const password = u.password.startsWith("$2")
+        ? u.password
+        : await hashPassword(u.password);
       await pool.query(
         `INSERT IGNORE INTO users (id, username, password, role, status, reviewNote, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           u.id,
           u.username,
-          u.password,
+          password,
           (u.role as string) === "buyer" ? "user" : u.role,
           u.status || "active",
           u.reviewNote || null,

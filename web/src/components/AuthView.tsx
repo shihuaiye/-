@@ -1,4 +1,5 @@
 import type { Role } from "../types";
+import { WUHAN_UNIVERSITIES } from "../constants/wuhanUniversities.ts";
 
 type LoginForm = { username: string; password: string };
 type RegForm = {
@@ -107,13 +108,11 @@ export function AuthView({
                 setRegForm({ ...regForm, school: e.target.value })
               }
             >
-              <option value="武汉大学">武汉大学</option>
-              <option value="华中科技大学">华中科技大学</option>
-              <option value="武汉理工大学">武汉理工大学</option>
-              <option value="中南财经政法大学">中南财经政法大学</option>
-              <option value="华中师范大学">华中师范大学</option>
-              <option value="中国地质大学（武汉）">中国地质大学（武汉）</option>
-              <option value="中央民族大学">中央民族大学</option>
+              {WUHAN_UNIVERSITIES.map((u) => (
+                <option key={u.id} value={u.name}>
+                  {u.name}（{u.shortName}）
+                </option>
+              ))}
             </select>
             <select
               value={regForm.role}

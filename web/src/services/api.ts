@@ -1,23 +1,22 @@
+import { API_BASE } from "../config.ts";
 import type {
   Conversation,
   Order,
+  OrderReviewBody,
   Product,
   ProductMessage,
   ProfileStats,
+  QuickRepliesPayload,
+  RecommendationFeed,
   Role,
   SellerPublicProfile,
   User,
 } from "../types";
 
-const API = "http://localhost:3100/api";
-
 type ApiResponse<T> = { success: boolean; message?: string; data: T };
 
-async function request<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<ApiResponse<T>> {
-  const res = await fetch(`${API}${path}`, init);
+async function request<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
+  const res = await fetch(`${API_BASE}${path}`, init);
   return res.json();
 }
 
@@ -45,8 +44,7 @@ export const api = {
   products: {
     all: (headers: HeadersInit) =>
       request<Product[]>("/products?mode=all", { headers }),
-    market: (headers: HeadersInit) =>
-      request<Product[]>("/products", { headers }),
+    market: (headers: HeadersInit) => request<Product[]>("/products", { headers }),
     mine: (headers: HeadersInit) =>
       request<Product[]>("/products?mode=mine", { headers }),
     detail: (id: string, headers: HeadersInit) =>
@@ -83,11 +81,7 @@ export const api = {
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ action, reason }),
       }),
-    status: (
-      id: string,
-      status: "approved" | "offline",
-      headers: HeadersInit,
-    ) =>
+    status: (id: string, status: "approved" | "offline", headers: HeadersInit) =>
       request<Product>(`/products/${id}/status`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
@@ -106,19 +100,7 @@ export const api = {
       }),
     update: (
       id: string,
-      payload: {
-        title?: string;
-        description?: string;
-        price?: number;
-        category?: string;
-        images?: string[];
-        campus?: string;
-        brand?: string;
-        model?: string;
-        memory?: string;
-        latitude?: number;
-        longitude?: number;
-      },
+      payload: Record<string, unknown>,
       headers: HeadersInit,
     ) =>
       request<Product>(`/products/${id}`, {
@@ -163,11 +145,10 @@ export const api = {
       }),
   },
   admin: {
-    users: (headers: HeadersInit) =>
-      request<User[]>("/admin/users", { headers }),
+    users: (headers: HeadersInit) => request<User[]>("/admin/users", { headers }),
     userDetail: (id: string, headers: HeadersInit) =>
       request<User>(`/admin/users/${id}`, { headers }),
-    saveUser: (id: string, payload: Partial<User>, headers: HeadersInit) =>
+    saveUser: (id: string, payload: Partial<User & { password?: string }>, headers: HeadersInit) =>
       request<User>(`/admin/users/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...headers },
@@ -185,7 +166,10 @@ export const api = {
         body: JSON.stringify({ action, note }),
       }),
     deleteUser: (id: string, headers: HeadersInit) =>
-      request<{}>(`/admin/users/${id}`, { method: "DELETE", headers }),
+      request<Record<string, never>>(`/admin/users/${id}`, {
+        method: "DELETE",
+        headers,
+      }),
   },
   orders: {
     list: (headers: HeadersInit) => request<Order[]>("/orders", { headers }),
@@ -204,11 +188,11 @@ export const api = {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
       }),
-    rate: (id: string, rating: number, headers: HeadersInit) =>
+    rate: (id: string, payload: OrderReviewBody, headers: HeadersInit) =>
       request<Order>(`/orders/${id}/rate`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ rating }),
+        body: JSON.stringify(payload),
       }),
   },
   profile: {
@@ -216,9 +200,17 @@ export const api = {
       request<ProfileStats>("/profile/stats", { headers }),
     seller: (id: string, headers: HeadersInit) =>
       request<SellerPublicProfile>(`/users/${id}/profile`, { headers }),
+    quickReplies: (headers: HeadersInit) =>
+      request<QuickRepliesPayload>("/profile/quick-replies", { headers }),
+    saveQuickReplies: (custom: string[], headers: HeadersInit) =>
+      request<QuickRepliesPayload>("/profile/quick-replies", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ custom }),
+      }),
   },
   recommendations: {
     list: (headers: HeadersInit) =>
-      request<Product[]>("/recommendations", { headers }),
+      request<RecommendationFeed>("/recommendations", { headers }),
   },
 };

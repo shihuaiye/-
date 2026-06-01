@@ -293,6 +293,7 @@ export function ProductDetailModal(props: {
   setMessageInput: (value: string) => void;
   sendMessage: () => void;
   onSellerClick: (sellerId: string) => void;
+  onBuyNow?: (product: Product) => void;
 }) {
   const {
     detail,
@@ -306,88 +307,179 @@ export function ProductDetailModal(props: {
     setMessageInput,
     sendMessage,
     onSellerClick,
+    onBuyNow,
   } = props;
   if (!detail) return null;
+
+  const isOwner = detail.sellerId === user?.id;
+  const isFav = favorites.includes(detail.id);
+  const canBuy = detail.status === "approved" && !isOwner && onBuyNow;
+
+  const statusLabel: Record<string, string> = {
+    approved: "售卖中",
+    pending: "审核中",
+    rejected: "已拒绝",
+    offline: "已下线",
+    sold: "已售出",
+  };
+
   return (
     <div className="modal-mask" onClick={() => setDetail(null)}>
       <div className="detail-modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{detail.title}</h3>
+        <header className="detail-modal-header">
+          <div>
+            <h3 className="detail-modal-title">{detail.title}</h3>
+            <span className={`detail-status-tag status-${detail.status}`}>
+              {statusLabel[detail.status] || detail.status}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="detail-close-btn"
+            aria-label="关闭"
+            onClick={() => setDetail(null)}
+          >
+            ×
+          </button>
+        </header>
+
         <div className="detail-images">
           {detail.images.map((img, i) => (
             <img key={i} src={img} alt={`图片${i + 1}`} />
           ))}
         </div>
-        <p>{detail.description}</p>
-        <p><b>价格：</b>¥{detail.price}</p>
-        <p><b>地点：</b>{detail.campus}</p>
-        <p>
-          <b>卖家：</b>
-          {detail.sellerId !== user?.id ? (
-            <button
-              type="button"
-              className="link-btn"
-              onClick={() => onSellerClick(detail.sellerId)}
-            >
-              {detail.sellerName}
-            </button>
-          ) : (
-            detail.sellerName
+
+        <p className="detail-desc">{detail.description}</p>
+
+        <div className="detail-price-block">
+          <span className="detail-price">¥{detail.price}</span>
+          <span className="detail-campus muted">{detail.campus}</span>
+        </div>
+
+        <div className="detail-meta-grid">
+          <div className="detail-meta-item">
+            <span className="detail-meta-label">卖家</span>
+            {isOwner ? (
+              <span>{detail.sellerName}（我）</span>
+            ) : (
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => onSellerClick(detail.sellerId)}
+              >
+                {detail.sellerName}
+              </button>
+            )}
+          </div>
+          <div className="detail-meta-item">
+            <span className="detail-meta-label">发布时间</span>
+            <span>{new Date(detail.createdAt).toLocaleString("zh-CN")}</span>
+          </div>
+          {detail.category === "digital" && (
+            <div className="detail-meta-item detail-meta-full">
+              <span className="detail-meta-label">规格</span>
+              <span>
+                {detail.brand} / {detail.model} / {detail.memory}
+              </span>
+            </div>
           )}
-        </p>
-        <p><b>发布时间：</b>{new Date(detail.createdAt).toLocaleString("zh-CN")}</p>
-        {detail.category === "digital" && (
-          <p><b>规格：</b>{detail.brand} / {detail.model} / {detail.memory}</p>
-        )}
-        <div className="row">
+        </div>
+
+        <div className="detail-actions-bar">
           <button
-            className={favorites.includes(detail.id) ? "small fav active" : "small fav"}
+            type="button"
+            className={isFav ? "detail-action-btn fav active" : "detail-action-btn fav"}
             onClick={() => toggleFavorite(detail.id)}
           >
-            {favorites.includes(detail.id) ? "取消收藏" : "收藏商品"}
+            {isFav ? "已收藏" : "收藏"}
           </button>
-          <button className="ghost" onClick={() => setDetail(null)}>关闭</button>
+          {!isOwner && (
+            <button
+              type="button"
+              className="detail-action-btn secondary"
+              onClick={() => onSellerClick(detail.sellerId)}
+            >
+              卖家主页
+            </button>
+          )}
+          {canBuy && (
+            <button
+              type="button"
+              className="detail-action-btn primary"
+              onClick={() => onBuyNow(detail)}
+            >
+              立即购买
+            </button>
+          )}
+          <button
+            type="button"
+            className="detail-action-btn ghost"
+            onClick={() => setDetail(null)}
+          >
+            关闭
+          </button>
         </div>
-        <hr style={{ border: "none", borderTop: "1px solid #e2e8f0", margin: "12px 0" }} />
-        <h4>留言</h4>
-        <div className="message-list">
-          {messages.map((m) => (
-            <div key={m.id} className="message-item">
-              <b>{m.fromUsername}</b>
-              <span className="muted"> {new Date(m.createdAt).toLocaleString("zh-CN")}</span>
-              {m.content.includes("[图片:") ? (
-                <div className="message-content">
-                  {m.content.split("\n").map((line, i) =>
-                    line.startsWith("[图片:") ? (
-                      <img
-                        key={i}
-                        src={line.replace("[图片:", "").replace("]", "").trim()}
-                        alt="留言图片"
-                        className="chat-image"
-                      />
-                    ) : (
-                      <p key={i}>{line}</p>
-                    )
+
+        <section className="detail-messages-section">
+          <h4 className="detail-section-title">商品留言</h4>
+          <div className="message-list">
+            {messages.length === 0 ? (
+              <p className="muted">暂无留言，来问第一个问题吧</p>
+            ) : (
+              messages.map((m) => (
+                <div key={m.id} className="message-item">
+                  <b>{m.fromUsername}</b>
+                  <span className="muted">
+                    {" "}
+                    {new Date(m.createdAt).toLocaleString("zh-CN")}
+                  </span>
+                  {m.content.includes("[图片:") ? (
+                    <div className="message-content">
+                      {m.content.split("\n").map((line, i) =>
+                        line.startsWith("[图片:") ? (
+                          <img
+                            key={i}
+                            src={line.replace("[图片:", "").replace("]", "").trim()}
+                            alt="留言图片"
+                            className="chat-image"
+                          />
+                        ) : (
+                          <p key={i}>{line}</p>
+                        ),
+                      )}
+                    </div>
+                  ) : (
+                    <p>{m.content}</p>
                   )}
                 </div>
-              ) : (
-                <p>{m.content}</p>
-              )}
-            </div>
-          ))}
-        </div>
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => setMessageImageFile(e.target.files?.[0] || null)}
-        />
-        <div className="row">
-          <input
-            placeholder="输入留言内容..."
-            value={messageInput}
-            onChange={(e) => setMessageInput(e.target.value)}
-          />
-          <button onClick={sendMessage}>发送</button>
-        </div>
+              ))
+            )}
+          </div>
+          <div className="detail-message-compose">
+            <input
+              type="file"
+              accept="image/*"
+              id="detail-message-image"
+              className="hidden"
+              onChange={(e) => setMessageImageFile(e.target.files?.[0] || null)}
+            />
+            <label htmlFor="detail-message-image" className="detail-message-image-label">
+              添加图片
+            </label>
+            <input
+              className="field-input detail-message-input"
+              placeholder="输入留言内容..."
+              value={messageInput}
+              onChange={(e) => setMessageInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") sendMessage();
+              }}
+            />
+            <button type="button" className="detail-action-btn primary" onClick={sendMessage}>
+              发送
+            </button>
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -457,52 +549,146 @@ export function SellerProfileModal(props: {
   );
 }
 
+export function OrderReviewPreview(props: { order: Order }) {
+  const { order } = props;
+  if (order.rating == null) return null;
+  return (
+    <div className="order-review-preview">
+      <div className="order-review-score">评分 {order.rating}/10</div>
+      {order.reviewText && <p className="order-review-text">{order.reviewText}</p>}
+      {order.reviewImages && order.reviewImages.length > 0 && (
+        <div className="order-review-images">
+          {order.reviewImages.map((src, i) => (
+            <img key={i} src={src} alt={`评价图${i + 1}`} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function RatingModal(props: {
   order: Order | null;
   onClose: () => void;
-  onSubmit: (rating: number) => void | Promise<void>;
+  onSubmit: (review: {
+    rating: number;
+    reviewText?: string;
+    reviewImages?: string[];
+  }) => void | Promise<void>;
 }) {
   const { order, onClose, onSubmit } = props;
   const [rating, setRating] = useState(10);
+  const [reviewText, setReviewText] = useState("");
+  const [reviewImages, setReviewImages] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (order) {
       setRating(order.rating ?? 10);
+      setReviewText(order.reviewText || "");
+      setReviewImages(order.reviewImages || []);
     }
   }, [order]);
+
+  const onImagesSelected = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const remain = 3 - reviewImages.length;
+    if (remain <= 0) return alert("最多上传 3 张评价图片");
+    setUploading(true);
+    try {
+      const { toBase64 } = await import("../utils.ts");
+      const picked = Array.from(files).slice(0, remain);
+      const encoded = await Promise.all(picked.map((f) => toBase64(f)));
+      setReviewImages((prev) => [...prev, ...encoded].slice(0, 3));
+    } catch {
+      alert("图片处理失败，请换一张试试");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   if (!order) return null;
 
   return (
     <div className="modal-mask" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <h3>给卖家打分</h3>
+      <div className="modal-card rating-modal-card" onClick={(e) => e.stopPropagation()}>
+        <h3>评价本次交易</h3>
         <p className="muted">订单：{order.productTitle}</p>
         <p className="muted">卖家：{order.sellerName}</p>
-        <div className="rating-stars" style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "16px 0" }}>
+
+        <label className="field-label">星级评分（1-10）</label>
+        <div className="rating-stars-grid">
           {Array.from({ length: 10 }, (_, index) => index + 1).map((star) => (
             <button
               key={star}
               type="button"
-              className={rating >= star ? "rating-star active" : "rating-star"}
+              className={rating >= star ? "rating-star-btn active" : "rating-star-btn"}
               onClick={() => setRating(star)}
-              style={{
-                minWidth: 40,
-                minHeight: 40,
-                borderRadius: 12,
-                border: "1px solid #dbe3f1",
-                background: rating >= star ? "#facc15" : "#f8fafc",
-                color: rating >= star ? "#1f2937" : "#64748b",
-                fontWeight: 700,
-              }}
             >
               ★ {star}
             </button>
           ))}
         </div>
-        <div className="row">
-          <button onClick={() => onSubmit(rating)}>提交评分</button>
-          <button className="ghost" onClick={onClose}>
+
+        <label className="field-label">文字评价（选填）</label>
+        <textarea
+          className="field-input rating-review-textarea"
+          placeholder="说说交易体验，如：描述相符、发货及时、态度友好…"
+          maxLength={500}
+          value={reviewText}
+          onChange={(e) => setReviewText(e.target.value)}
+          rows={4}
+        />
+        <p className="muted rating-char-count">{reviewText.length}/500</p>
+
+        <label className="field-label">图片评价（选填，最多 3 张）</label>
+        <div className="rating-review-images">
+          {reviewImages.map((src, i) => (
+            <div key={i} className="rating-review-image-slot">
+              <img src={src} alt={`预览${i + 1}`} />
+              <button
+                type="button"
+                className="rating-review-image-remove"
+                onClick={() =>
+                  setReviewImages((prev) => prev.filter((_, idx) => idx !== i))
+                }
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          {reviewImages.length < 3 && (
+            <label className="rating-review-image-add">
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                disabled={uploading}
+                onChange={(e) => {
+                  onImagesSelected(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              {uploading ? "处理中…" : "+ 添加图片"}
+            </label>
+          )}
+        </div>
+
+        <div className="row rating-modal-actions">
+          <button
+            type="button"
+            className="primary"
+            onClick={() =>
+              onSubmit({
+                rating,
+                reviewText: reviewText.trim() || undefined,
+                reviewImages: reviewImages.length ? reviewImages : undefined,
+              })
+            }
+          >
+            提交评价
+          </button>
+          <button type="button" className="ghost" onClick={onClose}>
             稍后再评
           </button>
         </div>

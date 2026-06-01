@@ -1,14 +1,16 @@
+import "./loadEnv.js";
 import express from "express";
 import cors from "cors";
-import { router } from "./routes.js";
-import { initDb } from "./db.js";
+import { router } from "./routes/index.js";
+import { initDb } from "./db/init.js";
+import { env } from "./config/env.js";
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 app.use("/api", router);
 
-const basePort = 3100;
+const basePort = env.port;
 
 const startServer = (port: number) => {
   const server = app.listen(port, () => {

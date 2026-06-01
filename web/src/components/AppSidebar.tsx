@@ -7,6 +7,7 @@ type Props = {
   hasUnreadMessages: boolean;
   onTabChange: (tab: Tab) => void;
   onOpenMessages: () => void;
+  onLogout: () => void;
 };
 
 export function AppSidebar({
@@ -16,6 +17,7 @@ export function AppSidebar({
   hasUnreadMessages,
   onTabChange,
   onOpenMessages,
+  onLogout,
 }: Props) {
   return (
     <aside className="sider">
@@ -51,6 +53,15 @@ export function AppSidebar({
           个人中心
         </button>
 
+        <button
+          className={
+            activeTab === "publish" ? "cta-button active" : "cta-button"
+          }
+          onClick={() => onTabChange("publish")}
+        >
+          发布商品
+        </button>
+
         {user.role === "admin" && (
           <button
             className={activeTab === "manage" ? "menu active" : "menu"}
@@ -70,14 +81,12 @@ export function AppSidebar({
         )}
       </nav>
 
-      <div className="sider-cta">
-        <button
-          className={
-            activeTab === "publish" ? "cta-button active" : "cta-button"
-          }
-          onClick={() => onTabChange("publish")}
-        >
-          发布商品
+      <div className="sider-spacer" />
+
+      <div className="sider-footer">
+        <div className="sider-user muted">{user.username}</div>
+        <button type="button" className="sider-logout" onClick={onLogout}>
+          退出登录
         </button>
       </div>
     </aside>
