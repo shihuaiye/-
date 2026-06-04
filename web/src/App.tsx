@@ -166,8 +166,14 @@ export function App() {
   };
 
   const onPublishImagesSelected = async (files: FileList | null) => {
-    const images = await products.onPublishImagesSelected(files);
-    if (images.length) setPublishForm((prev) => ({ ...prev, images }));
+    const newImages = await products.onPublishImagesSelected(files);
+    if (newImages.length) {
+      setPublishForm((prev) => {
+        // 追加新图片到现有图片数组，最多6张
+        const combined = [...prev.images, ...newImages].slice(0, 6);
+        return { ...prev, images: combined };
+      });
+    }
   };
 
   const refreshAfterOrderChange = () =>
@@ -506,7 +512,6 @@ export function App() {
               user={user}
               loadAccountDetail={loadAccountDetail}
               reviewAdminUser={reviewAdminUser}
-              deleteUser={deleteUser}
             />
           )}
 

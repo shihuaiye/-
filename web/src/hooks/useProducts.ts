@@ -71,7 +71,7 @@ export function useProducts(
     return true;
   };
 
-  const onPublishImagesSelected = async (files: FileList | null) => {
+  const onPublishImagesSelected = async (files: FileList | null): Promise<string[]> => {
     if (!files?.length) return [];
     const imageFiles = Array.from(files).slice(0, 6);
     return Promise.all(imageFiles.map((f) => toBase64(f)));

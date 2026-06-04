@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import EmojiPicker, { Theme } from "emoji-picker-react";
 import type {
   Category,
   Conversation,
@@ -362,7 +361,7 @@ export function FavoritesTab(props: {
 export function MineTab(props: {
   publishForm: PublishForm;
   setPublishForm: (value: PublishForm) => void;
-  onPublishImagesSelected: (files: FileList | null) => void;
+  onPublishImagesSelected: (files: FileList | null) => Promise<void>;
   pickCurrentLocation: () => void;
   publish: () => void;
   myProducts: Product[];
@@ -639,7 +638,7 @@ export function MineTab(props: {
 export function PostPublishTab(props: {
   publishForm: PublishForm;
   setPublishForm: (value: PublishForm) => void;
-  onPublishImagesSelected: (files: FileList | null) => void;
+  onPublishImagesSelected: (files: FileList | null) => Promise<void>;
   publish: () => void;
 }) {
   const { publishForm, setPublishForm, onPublishImagesSelected, publish } = props;
@@ -1354,10 +1353,8 @@ export function AccountsTab(props: {
   user: User;
   loadAccountDetail: (id: string) => void;
   reviewAdminUser: (id: string, action: "approve" | "reject") => void;
-  deleteUser: (id: string, username: string) => void;
 }) {
-  const { allUsers, user, loadAccountDetail, reviewAdminUser, deleteUser } =
-    props;
+  const { allUsers, user, loadAccountDetail, reviewAdminUser } = props;
   return (
     <section className="card">
       <h3>账号管理（管理员注册审核）</h3>
@@ -1400,14 +1397,6 @@ export function AccountsTab(props: {
                       拒绝
                     </button>
                   </>
-                )}
-                {u.id !== user.id && u.id !== "u-admin" && (
-                  <button
-                    className="small danger"
-                    onClick={() => deleteUser(u.id, u.username)}
-                  >
-                    删除账号
-                  </button>
                 )}
               </td>
             </tr>
@@ -1470,7 +1459,6 @@ export function MessagesTab(props: {
     onBuyerConfirmOrder,
   } = props;
 
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const isSystemChat = chatTarget?.userId === SYSTEM_USER_ID;
 
   return (
@@ -1717,20 +1705,12 @@ export function MessagesTab(props: {
                     <button
                       className="icon-btn ghost"
                       type="button"
-                      onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                    >
-                      表情
-                    </button>
-                    <button
-                      className="icon-btn ghost"
-                      type="button"
                       onClick={() =>
                         document.getElementById("chat-image-input")?.click()
                       }
                     >
                       图片
                     </button>
-                    {/* 移除文件按钮 */}
                   </div>
 
                   <textarea
@@ -1746,28 +1726,6 @@ export function MessagesTab(props: {
                     }}
                     rows={2}
                   />
-
-                  {showEmojiPicker && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        bottom: "100%",
-                        right: "0",
-                        zIndex: 1000,
-                      }}
-                    >
-                      <EmojiPicker
-                        onEmojiClick={(emojiData) => {
-                          setChatInput((prev) => prev + emojiData.emoji);
-                          setShowEmojiPicker(false);
-                        }}
-                        theme={Theme.AUTO}
-                        skinTonesDisabled
-                        searchDisabled
-                        previewConfig={{ showPreview: false }}
-                      />
-                    </div>
-                  )}
 
                   <div className="messages-input-bottom">
                     <input

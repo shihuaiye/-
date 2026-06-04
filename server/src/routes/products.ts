@@ -12,6 +12,7 @@ import {
   toggleFavoriteProduct,
   updateProduct,
   createOrder,
+  findOrdersByBuyerId,
 } from "../repositories/index.js";
 import { createPurchaseOrder } from "../orderFlow.js";
 import type { CreateProductBody, Order, Product } from "@secondhand/shared/src/index.js";
@@ -20,7 +21,7 @@ export const productsRouter = Router();
 
 productsRouter.get("/", auth, async (req: AuthedRequest, res) => {
   const mode = String(req.query.mode || "");
-  if (req.role === "admin" || mode === "all") {
+  if (mode === "all" && req.role === "admin") {
     return res.json({ success: true, data: await readProducts() });
   }
   if (mode === "mine") {
@@ -35,14 +36,32 @@ productsRouter.get("/", auth, async (req: AuthedRequest, res) => {
 productsRouter.get("/:id", auth, async (req: AuthedRequest, res) => {
   const product = await findProductById(req.params.id);
   if (!product) return res.status(404).json({ success: false, message: "商品不存在" });
-  if (
-    req.role !== "admin" &&
-    product.status !== "approved" &&
-    product.sellerId !== req.userId
-  ) {
-    return res.status(403).json({ success: false, message: "无权查看该商品" });
+
+  // 管理员可以查看所有商品
+  if (req.role === "admin") {
+    return res.json({ success: true, data: product });
   }
-  res.json({ success: true, data: product });
+
+  // 卖家可以查看自己的商品
+  if (product.sellerId === req.userId) {
+    return res.json({ success: true, data: product });
+  }
+
+  // 已通过审核的商品所有人都可以查看
+  if (product.status === "approved") {
+    return res.json({ success: true, data: product });
+  }
+
+  // 已售出的商品，买家也可以查看
+  if (product.status === "sold") {
+    const orders = await findOrdersByBuyerId(req.userId!);
+    const isBuyer = orders.some((o) => o.productId === product.id);
+    if (isBuyer) {
+      return res.json({ success: true, data: product });
+    }
+  }
+
+  return res.status(403).json({ success: false, message: "无权查看该商品" });
 });
 
 productsRouter.post("/", auth, async (req: AuthedRequest, res) => {
